@@ -1,8 +1,12 @@
-# 환경설정 파일
+
+# MCP 서버/툴 프로젝트 .gitignore (2025 최신)
+
+# 시크릿/환경설정
+secrets/*
 .env
+token.json
 
-
-# 도커/컴포즈 관련
+# 도커/컴포즈/로그
 *.pid
 *.log
 docker-compose.override.yml
@@ -12,12 +16,27 @@ docker-compose.override.yml
 *.tar.gz
 __pycache__/
 *.pyc
+backups/
+frontend_build/
+data/
+data_pre/
+logs/
 
 # IDE/에디터
 .vscode/
 .idea/
 
-# 기타
+# 파워셸/스크립트 로그
 pwsh/*.ps1
 pwsh/*.log
-app/__pycache__/
+
+# 포함(명시적)
+!README.md
+!docker-compose.yml
+!Dockerfile
+!Makefile
+!pyproject.toml
+!app/
+!src/
+!database/
+!tests/

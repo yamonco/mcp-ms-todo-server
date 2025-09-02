@@ -1,14 +1,27 @@
-version: "3.9"
 services:
-  mcp-todo:
-    build: .
-    env_file: [.env]
+  mcp:
+    container_name: ${MCP_CONTAINER}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TZ: ${TZ}
+        PORT: ${PORT}
+    # image: ${MCP_IMAGE}   # 빌드 대신 사전 이미지 사용 시 주석 해제
+    user: "${USER_ID}:${GROUP_ID}"
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      PORT: ${PORT}
+      EXECUTOR_MODE: ${EXECUTOR_MODE}
+      LOG_LEVEL: ${LOG_LEVEL}
+      APP_PREFIX: ${APP_PREFIX}
+      SCOPES: ${SCOPES}
+      MCP_TOKEN_FILE: ${MCP_TOKEN_FILE}
     ports:
-      - "${PORT}:8080"
+      - "${PORT}:${PORT}"
     volumes:
-      - ./logs:/var/log/mcp-todo
-      - ./data/token_cache:/app/data/token_cache
-      - ./data/graph-cache:/root/.graph
-      - ./pwsh:/opt/pwsh:ro
-    tty: true
-    working_dir: /app
+      - "${HOST_SECRETS}:${SERVER_CTR_SECRETS}:ro"   # ./secrets -> /app/secrets (RO)
+      - "./app:/app"
+    restart: unless-stopped

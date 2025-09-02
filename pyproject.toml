@@ -1,0 +1,16 @@
+[project]
+name = "mcp-ms-todo-server"
+version = "0.1.0"
+description = "MCP 서버 및 API"
+authors = [{ name = "yamon", email = "yamon@yamon.io" }]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "fastapi>=0.110,<0.111",
+    "uvicorn[standard]>=0.29,<0.30",
+    "httpx>=0.27,<0.28",
+    "sse-starlette>=1.6,<2.0",
+    "python-dotenv>=1.0,<2.0",
+    "msal>=1.33,<2.0",
+    "PyJWT>=2.10,<3.0",
+    "requests>=2.32,<3.0",
+]

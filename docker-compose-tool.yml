@@ -1,0 +1,19 @@
+services:
+  auth-tool:
+    container_name: ${TOOL_CONTAINER}
+    build:
+      context: ${HOST_HELPER}
+      dockerfile: Dockerfile
+      args:
+        TZ: ${TZ}
+    image: ${TOOL_IMAGE}
+    user: "${USER_ID}:${GROUP_ID}"
+    env_file:
+      - .env
+    environment:
+      HOME: /tmp
+    command: [ "tail", "-f", "/dev/null" ]
+    volumes:
+      - "${HOST_SECRETS}:${TOOL_CTR_SECRETS}"
+      - "${HOST_HELPER}:${TOOL_CTR_HELPER}"
+    restart: unless-stopped
