@@ -9,19 +9,19 @@ docs/.DS_Store
 # npm global cache
 node_modules/
 
-# MCP 서버/툴 프로젝트 .gitignore (2025 최신)
+# MCP server/tool project .gitignore (2025 latest)
 
-# 시크릿/환경설정
+# Secrets/Environment settings
 secrets/*
 .env
 token.json
 
-# 도커/컴포즈/로그
+# Docker/Compose/Logs
 *.pid
 *.log
 docker-compose.override.yml
 
-# 백업/임시/캐시
+# Backup/Temp/Cache
 *_backup_*/
 *.tar.gz
 __pycache__/
@@ -32,11 +32,11 @@ data/
 data_pre/
 logs/
 
-# IDE/에디터
+# IDE/Editor
 .vscode/
 .idea/
 
-# 파워셸/스크립트 로그
+# PowerShell/Script logs
 pwsh/*.ps1
 pwsh/*.log
 

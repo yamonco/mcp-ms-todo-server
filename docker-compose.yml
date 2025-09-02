@@ -7,7 +7,7 @@ services:
       args:
         TZ: ${TZ}
         PORT: ${PORT}
-    # image: ${MCP_IMAGE}   # 빌드 대신 사전 이미지 사용 시 주석 해제
+  # image: ${MCP_IMAGE}   # Uncomment to use prebuilt image instead of build
     user: "${USER_ID}:${GROUP_ID}"
     env_file:
       - .env
@@ -22,6 +22,6 @@ services:
     ports:
       - "${PORT}:${PORT}"
     volumes:
-      - "${HOST_SECRETS}:${SERVER_CTR_SECRETS}:ro"   # ./secrets -> /app/secrets (RO)
+      - "${HOST_SECRETS}:${SERVER_CTR_SECRETS}:ro"   # ./secrets -> /app/secrets (read-only)
       - "./app:/app"
     restart: unless-stopped
