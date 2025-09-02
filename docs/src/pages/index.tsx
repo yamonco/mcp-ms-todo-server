@@ -14,14 +14,27 @@ function HomepageHeader() {
     <header className={clsx('hero hero--primary', styles.heroBanner)}>
       <div className="container">
         <Heading as="h1" className="hero__title">
-          {siteConfig.title}
+          MCP-MS-TODO-SERVER
         </Heading>
-        <p className="hero__subtitle">{siteConfig.tagline}</p>
+        <p className="hero__subtitle">
+          Unified automation server for Microsoft To Do, powered by MCP & FastAPI.<br />
+          <b>Organizational (MS365) optimized. Personal account support planned.</b>
+        </p>
         <div className={styles.buttons}>
           <Link
             className="button button--secondary button--lg"
-            to="/docs/intro">
-            Docusaurus Tutorial - 5min ⏱️
+            to="/docs/project-overview">
+            Project Overview
+          </Link>
+          <Link
+            className="button button--primary button--lg"
+            to="/docs/getting-started">
+            Get Started
+          </Link>
+          <Link
+            className="button button--secondary button--lg"
+            to="/docs/api-reference">
+            API Reference
           </Link>
         </div>
       </div>

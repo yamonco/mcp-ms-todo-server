@@ -2,46 +2,35 @@
 sidebar_position: 1
 ---
 
-# Tutorial Intro
 
-Let's discover **Docusaurus in less than 5 minutes**.
+# MCP-MS-TODO-SERVER Introduction
 
-## Getting Started
+MCP-MS-TODO-SERVER is a unified automation server for Microsoft To Do, built on MCP (Model Context Protocol) and FastAPI. It provides a scalable, extensible platform for integrating task management, automation, and orchestration in enterprise environments.
 
-Get started by **creating a new site**.
+## Key Features
+- **MCP JSON-RPC 2.0 Tool Server**: Modular automation via standardized tool interface
+- **Microsoft To Do Integration**: Connects to MS365 organizational accounts (personal support planned)
+- **Dockerized Deployment**: Easy setup and scalable operation
+- **Real-Time Log Streaming**: Monitor automation and API activity live
+- **REST & PowerShell Support**: Flexible integration for various clients
 
-Or **try Docusaurus immediately** with **[docusaurus.new](https://docusaurus.new)**.
+## Architecture
+- **FastAPI** backend for high-performance API
+- **MCP Tool Engine** for JSON-RPC automation
+- **Microsoft Graph API** for To Do integration
+- **Docker** for deployment and isolation
 
-### What you'll need
+## Use Cases
+- Enterprise task automation
+- Workflow orchestration
+- Real-time monitoring and reporting
+- Integration with other MCP-compatible tools
 
-- [Node.js](https://nodejs.org/en/download/) version 18.0 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
+## Project Goals
+- Simplify Microsoft To Do automation for organizations
+- Provide a robust, extensible automation platform
+- Support both organizational and personal MS365 accounts (roadmap)
 
-## Generate a new site
+---
 
-Generate a new Docusaurus site using the **classic template**.
-
-The classic template will automatically be added to your project after you run the command:
-
-```bash
-npm init docusaurus@latest my-website classic
-```
-
-You can type this command into Command Prompt, Powershell, Terminal, or any other integrated terminal of your code editor.
-
-The command also installs all necessary dependencies you need to run Docusaurus.
-
-## Start your site
-
-Run the development server:
-
-```bash
-cd my-website
-npm run start
-```
-
-The `cd` command changes the directory you're working with. In order to work with your newly created Docusaurus site, you'll need to navigate the terminal there.
-
-The `npm run start` command builds your website locally and serves it through a development server, ready for you to view at http://localhost:3000/.
-
-Open `docs/intro.md` (this page) and edit some lines: the site **reloads automatically** and displays your changes.
+For setup instructions, see [Getting Started](./getting-started.md).
