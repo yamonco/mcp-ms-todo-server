@@ -1,5 +1,4 @@
-# ./app/adapter_graph_rest.py
-    return {
+
 
  # adapter_graph_rest.py (2025 MCP structure)
  # - Microsoft Graph API integration adapter
@@ -60,9 +59,9 @@ class _CircuitBreaker:
         self.cooldown_sec = cooldown_sec
         self.lock = threading.Lock()
 
-    def before(self):
+    def record(self, success: bool):
         with self.lock:
-            if ok:
+            if success:
                 self.fail = 0
             else:
                 self.fail += 1
@@ -82,39 +81,39 @@ def todo_delta_lists(token: str, delta_link: str = None) -> Dict[str, Any]:
     return delta_lists(token, delta_link)
 
 def todo_delta_tasks(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
-    """태스크 델타 조회"""
+    """Get delta of tasks"""
     return delta_tasks(token, list_id, delta_link)
 
 def todo_walk_delta_lists(token: str, delta_link: str = None) -> Dict[str, Any]:
-    """리스트 델타 전체 순회"""
+    """Iterate all list deltas"""
     return walk_delta_lists(token, delta_link)
 
 def todo_walk_delta_tasks(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
-    """태스크 델타 전체 순회"""
+    """Iterate all task deltas"""
     return walk_delta_tasks(token, list_id, delta_link)
 
 def todo_find_or_create_list(token: str, display_name: str) -> Dict[str, Any]:
-    """리스트가 없으면 생성"""
+    """Create list if not exists"""
     return find_or_create_list(token, display_name)
 
 def todo_quick_task(token: str, list_name: str, title: str, **kwargs) -> Dict[str, Any]:
-    """빠른 태스크 생성(list_name 기반)"""
+    """Quickly create a task (based on list_name)"""
     return quick_task(token, list_name, title, **kwargs)
 
 def todo_complete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
-    """태스크 완료 처리"""
+    """Complete a task"""
     return complete_task(token, list_id, task_id)
 
 def todo_reopen_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
-    """태스크 재오픈"""
+    """Reopen a task"""
     return reopen_task(token, list_id, task_id)
 
 def todo_snooze_task(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> Dict[str, Any]:
-    """태스크 미루기"""
+    """Snooze a task"""
     return snooze_task(token, list_id, task_id, remind_at_iso, tz)
 
 def todo_batch_get_tasks(token: str, list_id: str, task_ids: list) -> Dict[str, Any]:
-    """여러 태스크 일괄 조회"""
+    """Batch get multiple tasks"""
     return batch_get_tasks(token, list_id, task_ids)
 
 def todo_get_task_select(
@@ -124,58 +123,59 @@ def todo_get_task_select(
     select: Optional[List[str]] = None,
     expand: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """특정 필드만 조회"""
+    """Get only specific fields"""
     return get_task_select(token, list_id, task_id, select=select, expand=expand)
 
 def todo_list_tasks_lite(token: str, list_id: str, top: int = 20) -> Dict[str, Any]:
-    """경량 태스크 목록 조회"""
+    """Get lite task list"""
     return list_tasks_lite(token, list_id, top)
 
 def todo_list_tasks_all_lite(token: str, list_id: str, page_size: int = 100) -> Dict[str, Any]:
-    """경량 태스크 전체 조회"""
+    """Get all lite tasks"""
     return list_tasks_all_lite(token, list_id, page_size)
 
 def todo_complete_task_lite(token: str, list_id: str, task_id: str) -> str:
-    """경량 태스크 완료"""
+    """Complete lite task"""
     return complete_task_lite(token, list_id, task_id)
 
 def todo_snooze_task_lite(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> str:
-    """경량 태스크 미루기"""
+    """Snooze lite task"""
     return snooze_task_lite(token, list_id, task_id, remind_at_iso, tz)
 
 def todo_walk_delta_tasks_lite(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
-    """경량 태스크 델타 전체 순회"""
+    """Iterate all lite task deltas"""
     return walk_delta_tasks_lite(token, list_id, delta_link)
 
-# -----------------------------
-# 간단 파사드
-# -----------------------------
+ # -----------------------------
+ # Simple Facade
+ # -----------------------------
 def todo_list(token: str) -> Dict[str, Any]:
-    """모든 리스트 조회 파사드"""
+    """Facade to get all lists"""
     return list_lists(token)
 
 def todo_task(token: str, list_id: str, top: int = 10) -> Dict[str, Any]:
-    """특정 리스트의 태스크 조회 파사드"""
+    """Facade to get tasks of a specific list"""
     return list_tasks(token, list_id, top=top)
 
 def todo_create_list(token: str, name: str) -> Dict[str, Any]:
-    """리스트 생성 파사드"""
+    """Facade to create a list"""
     return create_list(token, name)
 
 def todo_create_task(token: str, list_id: str, title: str, **kwargs) -> Dict[str, Any]:
-    """태스크 생성 파사드"""
+    """Facade to create a task"""
     return create_task(token, list_id, title, **kwargs)
 
 def todo_delete_list(token: str, list_id: str) -> Dict[str, Any]:
-    """리스트 삭제 파사드"""
+    """Facade to delete a list"""
     return delete_list(token, list_id)
 
 # -----------------------------
 # HTTP 래퍼
 # -----------------------------
 def _request(method: Callable, url: str, token: str, *, max_retries: int = 2, **kwargs) -> Dict[str, Any]:
-    """429/5xx 백오프 + 율제한 + 회로차단 + 축약 에러 표준화"""
-    _circuit.before()
+    """429/5xx backoff + rate limit + circuit breaker + standardized error handling"""
+    # Circuit breaker: always initialize as success before request
+    _circuit.record(True)
     _rate_limiter.acquire()
     headers = _headers(token)
     if "headers" in kwargs:
@@ -211,14 +211,14 @@ def _request(method: Callable, url: str, token: str, *, max_retries: int = 2, **
         raise GraphAPIError(500, "Client", str(e)[:120])
 
 def _iso(dt: datetime) -> str:
-    """datetime → ISO(UTC) 문자열(마이크로초 제거).
-    naive datetime이 들어오면 UTC로 간주."""
+    """datetime → ISO(UTC) string (microseconds removed).
+    If naive datetime is given, assume UTC."""
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
 def _project_task(item: Dict[str, Any]) -> Dict[str, Any]:
-    """태스크 최소 필드 투영(Lite 응답)"""
+    """Project minimal fields for task (Lite response)"""
     return {
         "id": item.get("id"),
         "title": item.get("title"),
@@ -232,7 +232,7 @@ Importance = Literal["low", "normal", "high"]
 Status = Literal["notStarted", "inProgress", "completed", "waitingOnOthers", "deferred"]
 
 # -----------------------------
-# 리스트
+# Lists
 # -----------------------------
 def list_lists(token: str) -> Dict[str, Any]:
     try:
