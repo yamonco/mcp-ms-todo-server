@@ -1,0 +1,23 @@
+# 환경설정 파일
+.env
+
+
+# 도커/컴포즈 관련
+*.pid
+*.log
+docker-compose.override.yml
+
+# 백업/임시/캐시
+*_backup_*/
+*.tar.gz
+__pycache__/
+*.pyc
+
+# IDE/에디터
+.vscode/
+.idea/
+
+# 기타
+pwsh/*.ps1
+pwsh/*.log
+app/__pycache__/

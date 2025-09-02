@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  mcp-todo:
+    build: .
+    env_file: [.env]
+    ports:
+      - "${PORT}:8080"
+    volumes:
+      - ./logs:/var/log/mcp-todo
+      - ./data/token_cache:/app/data/token_cache
+      - ./data/graph-cache:/root/.graph
+      - ./pwsh:/opt/pwsh:ro
+    tty: true
+    working_dir: /app
