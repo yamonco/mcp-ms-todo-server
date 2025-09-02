@@ -1,3 +1,12 @@
+# Docusaurus build/cache/output
+docs/build/
+docs/.docusaurus/
+docs/node_modules/
+docs/.DS_Store
+docs/package-lock.json
+
+# npm global cache
+node_modules/
 
 # MCP 서버/툴 프로젝트 .gitignore (2025 최신)
 
