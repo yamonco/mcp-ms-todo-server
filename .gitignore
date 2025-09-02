@@ -1,9 +1,10 @@
+
 # Docusaurus build/cache/output
-docs/build/
+!docs/build/
 docs/.docusaurus/
 docs/node_modules/
 docs/.DS_Store
-docs/package-lock.json
+!docs/package-lock.json
 
 # npm global cache
 node_modules/
