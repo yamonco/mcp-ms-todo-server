@@ -1,0 +1,24 @@
+{
+  "name": "todo.tasks.create",
+  "description": "Create new task.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string" },
+      "list_id": { "type": "string" },
+      "due": { "type": "string", "format": "date-time" }
+    },
+    "required": ["title", "list_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "string" },
+      "title": { "type": "string" },
+      "due": { "type": "string", "format": "date-time" }
+    },
+    "required": ["id", "title"],
+    "additionalProperties": false
+  }
+}

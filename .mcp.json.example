@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "todo-server": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "X-API-Key": "${API_KEY}"
+      },
+      "env": {
+        "API_KEY": "your-secure-api-key-here"
+      }
+    }
+  }
+}

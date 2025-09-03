@@ -9,8 +9,9 @@ import json
 import logging
 from typing import Dict, Any, Callable, Optional, List, Tuple
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, Header, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
 
 from service_todo import TodoService
@@ -198,11 +199,36 @@ def _wrap_tool_output(raw):
 # ---------------------------------------------------------------------
 # FastAPI 앱
 # ---------------------------------------------------------------------
+
+
 app = FastAPI(title="MCP ToDo Server", version="0.2.0")
+
+# CORS 제한: 모든 Origin 차단 (필요시 특정 도메인만 허용)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[],
+    allow_methods=["POST"],
+    allow_headers=["*"],
+    max_age=3600
+)
+
+# API Key 인증 미들웨어
+EXPECTED_API_KEY = os.getenv("API_KEY")
+def require_api_key(x_api_key: str = Header(None)):
+    if EXPECTED_API_KEY:
+        if not x_api_key or x_api_key != EXPECTED_API_KEY:
+            raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # MCP 서버 상태, 버전, 인증 등 추가 정보 반환
+    return {
+        "status": "ok",
+        "server": CAPABILITIES["server"],
+        "protocolRevision": MCP_PROTOCOL_REV,
+        "apiKeyRequired": bool(os.getenv("API_KEY")),
+    }
 
 @app.get("/mcp/capabilities")
 def mcp_capabilities():
@@ -211,20 +237,22 @@ def mcp_capabilities():
     return CAPABILITIES
 
 
+
 @app.post("/mcp")
-async def mcp_entry(request: Request):
+async def mcp_entry(request: Request, x_api_key: str = Header(None)):
+    # API Key 인증
+    require_api_key(x_api_key)
     """
-    단일 JSON-RPC 엔드포인트
-      - initialize
-      - tools/list
-      - tools/call
+    단일 JSON-RPC 엔드포인트 (SSE/HTTP 자동 분기)
     """
+    accept = request.headers.get("accept", "")
+    is_sse = "text/event-stream" in accept
+
     try:
         payload = await request.json()
     except Exception:
         return _jsonrpc_err(None, -32700, "Parse error")
 
-    # 배치(JSON-RPC 배열) 미지원(일부 구현에서 배치 제거됨)
     if isinstance(payload, list):
         return _jsonrpc_err(None, -32600, "Batch not supported")
 
@@ -239,6 +267,63 @@ async def mcp_entry(request: Request):
     method = req.method or ""
     params = req.params or {}
 
+    # SSE 스트리밍 응답 핸들러
+    async def sse_stream():
+        import asyncio
+        # 초기화/툴 목록은 한 번만 전송
+        if method == "initialize":
+            msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": {
+                "capabilities": CAPABILITIES["capabilities"],
+                "server": CAPABILITIES["server"],
+                "protocolRevision": MCP_PROTOCOL_REV
+            }})
+            yield f"data: {msg}\n\n"
+            return
+        if method == "tools/list":
+            cursor = params.get("cursor")
+            tools, next_cursor = _list_tools(cursor)
+            result = {"tools": tools}
+            if next_cursor is not None:
+                result["nextCursor"] = next_cursor
+            msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": result})
+            yield f"data: {msg}\n\n"
+            return
+        if method == "tools/call":
+            name = params.get("name")
+            arguments = params.get("arguments", {})
+            if not name or not isinstance(arguments, dict):
+                msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32602, "message": "Invalid params"}})
+                yield f"data: {msg}\n\n"
+                return
+            try:
+                # 진행 로그 예시: 툴 실행 시작
+                yield f"data: {json.dumps({'event': 'start', 'tool': name})}\n\n"
+                # 실제 툴 실행 (비동기 sleep으로 진행 로그 시뮬레이션)
+                # 실서비스에서는 yield로 중간 로그/상태를 전송
+                result = _call_tool(name, arguments)
+                # 툴 실행 완료
+                yield f"data: {json.dumps({'event': 'finish', 'tool': name})}\n\n"
+                # 최종 결과
+                msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": result})
+                yield f"data: {msg}\n\n"
+            except TypeError as te:
+                msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32602, "message": f"Invalid params: {str(te)}"}})
+                yield f"data: {msg}\n\n"
+            except Exception as e:
+                logger.exception("server error on tools/call (SSE)")
+                msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32000, "message": f"Server error: {str(e)}"}})
+                yield f"data: {msg}\n\n"
+            return
+        # 알 수 없는 메서드
+        msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32601, "message": "Method not found"}})
+        yield f"data: {msg}\n\n"
+        return
+
+    # SSE 분기
+    if is_sse:
+        return StreamingResponse(sse_stream(), media_type="text/event-stream")
+
+    # 기존 HTTP 응답
     # -------------------------
     # initialize (capabilities, serverInfo, protocolRevision)
     # -------------------------
@@ -272,12 +357,9 @@ async def mcp_entry(request: Request):
             result = _call_tool(name, arguments)
             return _jsonrpc_ok(req.id, result)
         except TypeError as te:
-            # 파라미터 유효성(클라이언트 잘못) → JSON-RPC invalid params
             return _jsonrpc_err(req.id, -32602, f"Invalid params: {str(te)}")
         except Exception as e:
             logger.exception("server error on tools/call")
-            # 서버 내부 예외 → JSON-RPC 서버 에러
             return _jsonrpc_err(req.id, -32000, f"Server error: {str(e)}")
 
-    # 알 수 없는 메서드
     return _jsonrpc_err(req.id, -32601, "Method not found")
