@@ -97,24 +97,32 @@ Tool list/parameters can be checked from the `tools/list` result.
 ```
 
 
+
 ### Supported Tools (tools/list result)
 - todo.lists.get: Get list of lists
 - todo.lists.mutate: Create/Delete/Rename list
 - todo.tasks.get: Get list of tasks
 - todo.tasks.create: Create task
 - todo.tasks.delete: Delete task
-- todo.tasks.patch: Update/complete/reopen/snooze task
-- todo.sync.delta: Sync/change detection
+
+※ 현재 MCP 서버는 위 툴만 지원하며, tools.patch, sync.delta 등은 향후 확장 예정입니다. 실제 tools/list 결과와 코드/스키마 명칭이 일치하도록 관리합니다.
 
 ---
 
 
+
 ## Environment Variables (.env)
 
+- `API_KEY`: MCP 서버 인증용 키 (반드시 복잡하게 설정, 외부 노출 금지)
 - `TENANT_ID`: organizations|consumers|common or actual tenant ID
 - `CLIENT_ID`: Set when registering app, leave blank for personal/public client
 - `SCOPES`: Recommended value `Tasks.ReadWrite offline_access`
 - `EXECUTOR_MODE`: `rest` (recommended) or `pwsh`
+## MCP 서버 인증/보안
+
+- 모든 /mcp 요청은 `X-API-Key` 헤더에 환경변수 `API_KEY` 값을 포함해야 인증됩니다.
+- CORS 정책은 기본적으로 모든 Origin을 차단하며, 필요시 특정 도메인만 허용 가능합니다.
+- API_KEY는 .env에만 저장하고, .gitignore에 반드시 포함시켜 커밋 금지.
 
 ---
 

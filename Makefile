@@ -1,7 +1,11 @@
+
 .PHONY: help \
-        tool-build tool-up tool-down tool-exec az-cli-login az-login app-register set-tenant tool-account tool-token \
-        server-build server-up server-down server-logs server-restart \
-        mcp-init mcp-tools mcp-raw mcp-call
+	tool-build tool-up tool-down tool-exec az-cli-login az-login app-register set-tenant tool-account tool-token \
+	server-build server-up server-down server-logs server-restart \
+	mcp-init mcp-tools mcp-raw mcp-call mcp-manifest
+## MCP manifest 자동 생성
+mcp-manifest:
+	python3 tools_manifest.py
 
 COMPOSE_TOOL = docker compose -f docker-compose-tool.yml --env-file .env
 COMPOSE_ROOT = docker compose -f docker-compose.yml   --env-file .env

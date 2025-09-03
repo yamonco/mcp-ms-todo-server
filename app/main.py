@@ -1,3 +1,62 @@
+# STDIO MCP 모드: stdin에서 JSON-RPC 요청을 읽고 stdout으로 응답을 출력
+if __name__ == "__main__":
+    import sys
+    print("[MCP STDIO mode] Ready for JSON-RPC requests via stdin.", file=sys.stderr)
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except Exception as e:
+            print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": None, "error": {"code": -32700, "message": "Parse error"}}))
+            continue
+        # 배치 미지원
+        if isinstance(payload, list):
+            print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": None, "error": {"code": -32600, "message": "Batch not supported"}}))
+            continue
+        try:
+            req = JsonRpcRequest.model_validate(payload)
+        except ValidationError:
+            print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": None, "error": {"code": -32600, "message": "Invalid Request"}}))
+            continue
+        if req.jsonrpc != MCP_JSONRPC_VERSION:
+            print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32600, "message": "Invalid jsonrpc version"}}))
+            continue
+        method = req.method or ""
+        params = req.params or {}
+        if method == "initialize":
+            print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": {
+                "capabilities": CAPABILITIES["capabilities"],
+                "server": CAPABILITIES["server"],
+                "protocolRevision": MCP_PROTOCOL_REV
+            }}))
+            continue
+        if method == "tools/list":
+            tools, next_cursor = _list_tools(params.get("cursor"))
+            result = {"tools": tools}
+            if next_cursor is not None:
+                result["nextCursor"] = next_cursor
+            print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": result}))
+            continue
+        if method == "tools/call":
+            name = params.get("name")
+            arguments = params.get("arguments", {})
+            if not name or not isinstance(arguments, dict):
+                print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32602, "message": "Invalid params"}}))
+                continue
+            try:
+                result = _call_tool(name, arguments)
+                print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": result}))
+            except TypeError as te:
+                print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32602, "message": f"Invalid params: {str(te)}"}}))
+            except Exception as e:
+                print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32000, "message": f"Server error: {str(e)}"}}))
+            continue
+        print(json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32601, "message": "Method not found"}}))
 
  # main.py (2025 MCP latest structure)
  # - FastAPI-based MCP server
@@ -130,52 +189,12 @@ def _jsonrpc_err(id_val: Any, code: int, message: str) -> JSONResponse:
     return JSONResponse({"jsonrpc": MCP_JSONRPC_VERSION, "id": id_val, "error": {"code": code, "message": message}})
 
 # tools/list result format
-def _list_tools(cursor: Optional[str]) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    # Return single page (implement cursor/nextCursor if needed)
-    tool_defs = []
-    for t in TOOLS:
-        tool_defs.append({
-            "name": t.name,
-            "description": t.description,
-            "inputSchema": t.inputSchema
-        })
-    # According to MCP spec, nextCursor must be null even for a single page
-    return tool_defs, None
+
+# tools.py의 _list_tools만 사용
 
 # tools/call 실행 및 Tool Result 변환
-def _call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    # Unknown tool → Unified as MCP ToolResult failure instead of JSON-RPC error
-    if name not in TOOLS_BY_NAME:
-        return {
-            "content": [
-                {"type": "text", "text": f"tool failed: unknown tool '{name}'"}
-            ],
-            "isError": True
-        }
 
-    tool = TOOLS_BY_NAME[name]
-
-    # 간이 스키마 검증(강화판)
-    err = validate_params_by_schema(arguments or {}, tool.inputSchema)
-    if err:
-        # 파라미터 유효성은 도구 호출 자체가 실패한 것으로 간주하지 않고,
-        # JSON-RPC invalid params로 매핑(클라이언트 입력 오류)
-        raise TypeError(err)
-
-    try:
-        # 민감 파라미터 노출 방지: 이름만 로그
-        logger.debug("executing tool: %s", name)
-        raw = tool.exec(arguments or {})
-        return _wrap_tool_output(raw)
-    except Exception as e:
-        logger.exception("tool execution failed: %s", name)
-        # 도구 내부 예외는 ToolResult 실패로 전달(상호운용성 안전)
-        return {
-            "content": [
-                {"type": "text", "text": f"tool failed: {str(e)}"}
-            ],
-            "isError": True
-        }
+# tools.py의 _call_tool만 사용, 결과는 _wrap_tool_output으로 일원화
 
 # ---------------------------------------------------------------------
 # MCP 툴 결과 래퍼: content/isError 포맷 변환
@@ -201,7 +220,15 @@ def _wrap_tool_output(raw):
 # ---------------------------------------------------------------------
 
 
+
 app = FastAPI(title="MCP ToDo Server", version="0.2.0")
+@app.get("/mcp/manifest")
+def mcp_manifest():
+    """
+    MCP 툴 선언 manifest를 JSON으로 반환 (Cursor 등에서 자동 임포트 가능)
+    """
+    tools, _ = _list_tools(None)
+    return {"tools": tools}
 
 # CORS 제한: 모든 Origin 차단 (필요시 특정 도메인만 허용)
 app.add_middleware(
