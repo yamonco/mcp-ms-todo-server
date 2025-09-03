@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from service_todo import TodoService
-from tools import ToolDef, TOOLS, TOOLS_BY_NAME, _list_tools, _call_tool
+from tools import ToolDef, TOOLS, TOOLS_BY_NAME, _list_tools, _call_tool, validate_params_by_schema
 
 
  # Logging setup
@@ -39,317 +39,7 @@ CAPABILITIES = {
     }
 }
 
-
- # MCP tool registration and executor
- # - Each tool is defined as ToolDef(name, description, inputSchema, exec)
- # - tools/list: returns tool list
- # - tools/call: executes tool and returns result
-todo_service = TodoService()
-ToolExec = Callable[[Dict[str, Any]], Any]
-
-class ToolDef(BaseModel):
-    name: str
-    description: str
-    inputSchema: Dict[str, Any]
-    exec: ToolExec
-
- # ---------------------------------------------------------------------
- # Lightweight JSON Schema validator
- #  - required / enum / additionalProperties:false / single-level nested object / array items.type
- #  - anyOf simple support (ex: [{"required": ["list_id"]}, {"required": ["list_name"]}])
- # ---------------------------------------------------------------------
-def validate_params_by_schema(params: Dict[str, Any], schema: Dict[str, Any]) -> Optional[str]:
-    if not schema:
-        return None
-
-    if schema.get("type") == "object":
-        required = schema.get("required", [])
-        props: Dict[str, Dict[str, Any]] = schema.get("properties", {})
-        additional = schema.get("additionalProperties", True)
-
-    # anyOf simple support: assumes each subschema only contains "required"
-        any_of = schema.get("anyOf", [])
-        if any_of:
-            ok_any = False
-            last_err = ""
-            # ...existing code...
-
- # ---------------------------------------------------------------------
- # Tool definition
- #  - Schema meta info (description/examples/enum etc. enhanced)
- #  - create_task requires title + one of (list_id | list_name) (anyOf)
-# ---------------------------------------------------------------------
-TOOLS: List[ToolDef] = [
-    # 1) lists.get
-    ToolDef(
-    name="todo.lists.get",
-    description="Get todo list.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["get"], "default": "get"}
-            },
-            "required": ["action"],
-            "additionalProperties": False
-        },
-        exec=lambda p: _exec_lists(p, todo_service),
-    ),
-    # 2) lists.mutate (create/delete/rename)
-    ToolDef(
-    name="todo.lists.mutate",
-    description="Create, delete, or rename list.",
-        inputSchema={
-            "type": "object",
-            "oneOf": [
-                {  # create
-                    "properties": {
-                        "action": {"type": "string", "enum": ["create"]},
-                        "display_name": {"type": "string"}
-                    },
-                    "required": ["action", "display_name"],
-                    "additionalProperties": False
-                },
-                {  # delete
-                    "properties": {
-                        "action": {"type": "string", "enum": ["delete"]},
-                        "list_id": {"type": "string"}
-                    },
-                    "required": ["action", "list_id"],
-                    "additionalProperties": False
-                },
-                {  # rename
-                    "properties": {
-                        "action": {"type": "string", "enum": ["rename"]},
-                        "list_id": {"type": "string"},
-                        "display_name": {"type": "string"}
-                    },
-                    "required": ["action", "list_id", "display_name"],
-                    "additionalProperties": False
-                }
-            ]
-        },
-        exec=lambda p: _exec_lists(p, todo_service),
-    ),
-    # 3) tasks.get (lite=true면 경량)
-    ToolDef(
-    name="todo.tasks.get",
-    description="Get tasks in list.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["get"], "default": "get"},
-                "list_id": {"type": "string"},
-                "lite": {"type": "boolean"},
-                "top": {"type": "integer"},
-                "user": {"type": "string"}
-            },
-            "required": ["action", "list_id"],
-            "additionalProperties": False
-        },
-        exec=lambda p: _exec_tasks(p, todo_service),
-    ),
-    # 6) tasks.delete (완전 삭제)
-    ToolDef(
-    name="todo.tasks.delete",
-    description="Delete task permanently.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["delete"], "default": "delete"},
-                "list_id": {"type": "string"},
-                "task_id": {"type": "string"}
-            },
-            "required": ["action", "list_id", "task_id"],
-            "additionalProperties": False
-        },
-        exec=lambda p: todo_service.delete_task(p["list_id"], p["task_id"]),
-    ),
-    # 4) tasks.create
-    ToolDef(
-    name="todo.tasks.create",
-    description="Create new task.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["create"], "default": "create"},
-                "list_id": {"type": "string"},
-                "title": {"type": "string"},
-                "body": {"type": "string"},
-                "due": {"type": "string", "description": "ISO8601"},
-                "time_zone": {"type": "string"},
-                "reminder": {"type": "string", "description": "ISO8601"},
-                "importance": {"type": "string", "enum": ["low", "normal", "high"]},
-                "status": {"type": "string", "enum": ["notStarted", "inProgress", "completed", "waitingOnOthers", "deferred"]},
-                "recurrence": {"type": "object"}
-            },
-            "required": ["action", "list_id", "title"],
-            "additionalProperties": False
-        },
-        exec=lambda p: _exec_tasks(p, todo_service),
-    ),
-    # 5) tasks.patch (generic/complete/reopen/snooze)
-    ToolDef(
-    name="todo.tasks.patch",
-    description="Update, complete, reopen, or snooze task.",
-        inputSchema={
-            "type": "object",
-            "oneOf": [
-                {  # generic
-                    "properties": {
-                        "action": {"type": "string", "enum": ["patch"]},
-                        "mode": {"type": "string", "enum": ["generic"], "default": "generic"},
-                        "list_id": {"type": "string"},
-                        "task_id": {"type": "string"},
-                        "patch": {"type": "object"}
-                    },
-                    "required": ["action", "mode", "list_id", "task_id", "patch"],
-                    "additionalProperties": False
-                },
-                {  # complete
-                    "properties": {
-                        "action": {"type": "string", "enum": ["patch"]},
-                        "mode": {"type": "string", "enum": ["complete"]},
-                        "list_id": {"type": "string"},
-                        "task_id": {"type": "string"}
-                    },
-                    "required": ["action", "mode", "list_id", "task_id"],
-                    "additionalProperties": False
-                },
-                {  # reopen
-                    "properties": {
-                        "action": {"type": "string", "enum": ["patch"]},
-                        "mode": {"type": "string", "enum": ["reopen"]},
-                        "list_id": {"type": "string"},
-                        "task_id": {"type": "string"}
-                    },
-                    "required": ["action", "mode", "list_id", "task_id"],
-                    "additionalProperties": False
-                },
-                {  # snooze
-                    "properties": {
-                        "action": {"type": "string", "enum": ["patch"]},
-                        "mode": {"type": "string", "enum": ["snooze"]},
-                        "list_id": {"type": "string"},
-                        "task_id": {"type": "string"},
-                        "remind_at_iso": {"type": "string", "description": "ISO8601"},
-                        "tz": {"type": "string"}
-                    },
-                    "required": ["action", "mode", "list_id", "task_id", "remind_at_iso"],
-                    "additionalProperties": False
-                }
-            ]
-        },
-        exec=lambda p: _exec_tasks(p, todo_service),
-    ),
-    # 6) sync.delta (delta/ walk/ lite 집약)
-    ToolDef(
-    name="todo.sync.delta",
-    description="Sync or get changes (delta).",
-        inputSchema={
-            "type": "object",
-            "oneOf": [
-                {  # delta_lists
-                    "properties": {
-                        "action": {"type": "string", "enum": ["delta_lists"]},
-                        "delta_link": {"type": "string"}
-                    },
-                    "required": ["action"],
-                    "additionalProperties": False
-                },
-                {  # delta_tasks
-                    "properties": {
-                        "action": {"type": "string", "enum": ["delta_tasks"]},
-                        "list_id": {"type": "string"},
-                        "delta_link": {"type": "string"}
-                    },
-                    "required": ["action", "list_id"],
-                    "additionalProperties": False
-                },
-                {  # walk_delta_lists
-                    "properties": {
-                        "action": {"type": "string", "enum": ["walk_delta_lists"]},
-                        "delta_link": {"type": "string"}
-                    },
-                    "required": ["action"],
-                    "additionalProperties": False
-                },
-                {  # walk_delta_tasks
-                    "properties": {
-                        "action": {"type": "string", "enum": ["walk_delta_tasks"]},
-                        "list_id": {"type": "string"},
-                        "delta_link": {"type": "string"}
-                    },
-                    "required": ["action", "list_id"],
-                    "additionalProperties": False
-                },
-                {  # lite_list
-                    "properties": {
-                        "action": {"type": "string", "enum": ["lite_list"]},
-                        "list_id": {"type": "string"},
-                        "top": {"type": "integer"}
-                    },
-                    "required": ["action", "list_id"],
-                    "additionalProperties": False
-                },
-                {  # lite_all
-                    "properties": {
-                        "action": {"type": "string", "enum": ["lite_all"]},
-                        "list_id": {"type": "string"},
-                        "page_size": {"type": "integer"}
-                    },
-                    "required": ["action", "list_id"],
-                    "additionalProperties": False
-                },
-                {  # lite_complete
-                    "properties": {
-                        "action": {"type": "string", "enum": ["lite_complete"]},
-                        "list_id": {"type": "string"},
-                        "task_id": {"type": "string"}
-                    },
-                    "required": ["action", "list_id", "task_id"],
-                    "additionalProperties": False
-                },
-                {  # lite_snooze
-                    "properties": {
-                        "action": {"type": "string", "enum": ["lite_snooze"]},
-                        "list_id": {"type": "string"},
-                        "task_id": {"type": "string"},
-                        "remind_at_iso": {"type": "string"},
-                        "tz": {"type": "string"}
-                    },
-                    "required": ["action", "list_id", "task_id", "remind_at_iso"],
-                    "additionalProperties": False
-                }
-            ]
-        },
-        exec=lambda p: _exec_sync(p, todo_service),
-    ),
-]
-
-
-# 보조: list_name만 들어온 경우 list_id 보충
-def _exec_create_task(params: Dict[str, Any], service: TodoService):
-    p = dict(params)  # 원본 보존
-    if not p.get("list_id") and p.get("list_name"):
-        # list_name으로 ID 해석
-        lists = service.list_lists()
-        if isinstance(lists, dict):
-            values = lists.get("value", [])
-        else:
-            values = lists or []
-        target = None
-        if isinstance(values, list):
-            target = next((x for x in values if isinstance(x, dict) and x.get("displayName") == p["list_name"]), None)
-        if not target:
-            created = service.create_list(display_name=p["list_name"])
-            if isinstance(created, dict):
-                p["list_id"] = created.get("id")
-        else:
-            p["list_id"] = target.get("id")
-        p.pop("list_name", None)
-    return service.create_task(**p)
-
-# === lists 도메인 ===
+# === lists domain ===
 def _exec_lists(p: Dict[str, Any], svc: TodoService):
     action = p.get("action")
     if action == "get":
@@ -362,11 +52,11 @@ def _exec_lists(p: Dict[str, Any], svc: TodoService):
         return svc.update_list(list_id=p["list_id"], display_name=p["display_name"])
     return {"error": f"unsupported lists.action: {action}"}
 
-# === tasks 도메인 ===
+# === tasks domain ===
 def _exec_tasks(p: Dict[str, Any], svc: TodoService):
     action = p.get("action")
     if action == "get":
-        # lite 여부로 경량/일반 분기
+    # Branch for lite (lightweight) or normal mode
         if p.get("lite") is True:
             top = p.get("top", 20)
             return svc.list_tasks_lite(list_id=p["list_id"], top=top)
@@ -396,7 +86,7 @@ def _exec_tasks(p: Dict[str, Any], svc: TodoService):
         return {"error": f"unsupported tasks.patch.mode: {mode}"}
     return {"error": f"unsupported tasks.action: {action}"}
 
-# === sync/델타 도메인 ===
+# === sync/delta domain ===
 def _exec_sync(p: Dict[str, Any], svc: TodoService):
     action = p.get("action")
     # lists / tasks / walk_lists / walk_tasks / lite_list / lite_all / lite_complete / lite_snooze
@@ -420,11 +110,11 @@ def _exec_sync(p: Dict[str, Any], svc: TodoService):
 
 
 
-# 인덱스: 이름 -> ToolDef
+# Index: name -> ToolDef
 TOOLS_BY_NAME: Dict[str, ToolDef] = {t.name: t for t in TOOLS}
 
 # ---------------------------------------------------------------------
-# JSON-RPC 2.0 모델/헬퍼
+# JSON-RPC 2.0 Model/Helper
 # ---------------------------------------------------------------------
 class JsonRpcRequest(BaseModel):
     jsonrpc: str = Field(MCP_JSONRPC_VERSION)
@@ -438,9 +128,9 @@ def _jsonrpc_ok(id_val: Any, result: Dict[str, Any]) -> JSONResponse:
 def _jsonrpc_err(id_val: Any, code: int, message: str) -> JSONResponse:
     return JSONResponse({"jsonrpc": MCP_JSONRPC_VERSION, "id": id_val, "error": {"code": code, "message": message}})
 
-# tools/list 결과 포맷
+# tools/list result format
 def _list_tools(cursor: Optional[str]) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    # 단일 페이지 반환(필요 시 cursor/nextCursor 구현)
+    # Return single page (implement cursor/nextCursor if needed)
     tool_defs = []
     for t in TOOLS:
         tool_defs.append({
@@ -448,12 +138,12 @@ def _list_tools(cursor: Optional[str]) -> Tuple[List[Dict[str, Any]], Optional[s
             "description": t.description,
             "inputSchema": t.inputSchema
         })
-    # MCP 명세에 따라 nextCursor는 단일 페이지라도 반드시 null 반환
+    # According to MCP spec, nextCursor must be null even for a single page
     return tool_defs, None
 
 # tools/call 실행 및 Tool Result 변환
 def _call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    # Unknown tool → JSON-RPC 에러 대신 MCP ToolResult 실패로 통일
+    # Unknown tool → Unified as MCP ToolResult failure instead of JSON-RPC error
     if name not in TOOLS_BY_NAME:
         return {
             "content": [

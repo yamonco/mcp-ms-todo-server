@@ -8,8 +8,9 @@ import json
 from pathlib import Path
 
 def _get_access_token():
-    """Return current access token (read from secrets/token.json)"""
-    config_path = Path('/app/secrets/token.json')
+    """Return current access token (read from secrets/token.json or env TOKEN_PATH)"""
+    import os
+    config_path = Path(os.getenv("TOKEN_PATH", "/app/secrets/token.json"))
     if config_path.exists():
         with open(config_path) as f:
             config = json.load(f)
@@ -35,6 +36,7 @@ class TodoService:
 
     def list_tasks(self, list_id, user=None):
         token = _get_access_token()
+    # The user parameter is currently unused. Can be used for $filter in the future.
         return rest.list_tasks(token, list_id)
 
     def create_task(self, list_id, title, body=None):

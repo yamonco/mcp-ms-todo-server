@@ -120,27 +120,21 @@ server-restart:
 # ---------- MCP JSON-RPC convenience ----------
 
 mcp-init:
-	curl -sS $(MCP_URL) \
-	  -H 'Content-Type: application/json' \
-	  -H 'Accept: application/json, text/event-stream' \
-	  -d '{"jsonrpc":"2.0","id":"init-1","method":"initialize","params":{"protocolVersion":"2025-05-01","clientInfo":{"name":"make-cli","version":"0.1.0"},"capabilities":{}}}' | jq .
+		curl -sS $(MCP_URL)/mcp \
+		  -H 'Content-Type: application/json' \
+		  -d '{"jsonrpc":"2.0","id":"tools-1","method":"tools/list","params":{}}' | jq '.result.tools'
 
 mcp-tools:
-	curl -sS $(MCP_URL) \
-	  -H 'Content-Type: application/json' \
-	  -H 'Accept: application/json, text/event-stream' \
-	  -d '{"jsonrpc":"2.0","id":"tools-1","method":"tools/list","params":{}}' | jq '.result.tools'
-
+		curl -sS $(MCP_URL)/mcp \
+		  -H 'Content-Type: application/json' \
+		  -d '{"jsonrpc":"2.0","id":"tools-raw","method":"tools/list","params":{}}' | jq .
 mcp-raw:
-	curl -sS $(MCP_URL) \
-	  -H 'Content-Type: application/json' \
-	  -H 'Accept: application/json, text/event-stream' \
-	  -d '{"jsonrpc":"2.0","id":"tools-raw","method":"tools/list","params":{}}' | jq .
-
-METHOD ?= tools/list
+	curl -sS $(MCP_URL)/mcp \
+		curl -sS $(MCP_URL)/mcp \
+		  -H 'Content-Type: application/json' \
+		  -d '{"jsonrpc":"2.0","id":"call-1","method":"$(METHOD)","params":$(PARAMS)}' | jq .
 PARAMS ?= {}
 mcp-call:
-	curl -sS $(MCP_URL) \
+	curl -sS $(MCP_URL)/mcp \
 	  -H 'Content-Type: application/json' \
-	  -H 'Accept: application/json, text/event-stream' \
 	  -d '{"jsonrpc":"2.0","id":"call-1","method":"$(METHOD)","params":$(PARAMS)}' | jq .

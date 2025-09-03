@@ -1,10 +1,18 @@
+# secrets 디렉터리 및 token.json 파일에 쓰기 권한 부여
+
 FROM python:3.11-slim
+
+
+RUN mkdir -p /opt/auth-helper/../secrets && chmod -R 777 /opt/auth-helper/../secrets
 
 ARG TZ=Asia/Seoul
 ENV TZ=${TZ}
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /opt/auth-helper
+
+# secrets 디렉터리 및 token.json 파일에 쓰기 권한 부여
+RUN mkdir -p /opt/auth-helper/../secrets && chmod -R 777 /opt/auth-helper/../secrets
 
 # --- azure-cli (APT) 설치 ---
 # base: debian bookworm (python:3.11-slim)
@@ -23,9 +31,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # --- uv 설치 & 파이썬 deps 설치 ---
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml ./     
+
+COPY pyproject.toml ./
 COPY auth-helper.py ./
 
-RUN uv pip install --system --requirements pyproject.toml
+# requirements.txt의 의존성을 uv로 설치
+COPY requirements.txt ./
+RUN uv pip install --system --requirements requirements.txt
 
 CMD ["tail", "-f", "/dev/null"]

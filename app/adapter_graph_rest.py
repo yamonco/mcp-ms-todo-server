@@ -1,10 +1,8 @@
+# adapter_graph_rest.py (2025 MCP structure)
+# - Microsoft Graph API integration adapter
+# - REST calls based on access token, includes error/rate limiter/circuit breaker utilities
 
-
- # adapter_graph_rest.py (2025 MCP structure)
- # - Microsoft Graph API integration adapter
- # - REST calls based on access token, includes error/rate limiter/circuit breaker utilities
-
-import time
+import os, time
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Callable, Iterator, Literal, List
@@ -13,12 +11,14 @@ import httpx
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
+
 def _headers(token: str) -> Dict[str, str]:
     """Return headers for Graph API call"""
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+
 
 class GraphAPIError(Exception):
     """Graph API error wrapper"""
@@ -27,6 +27,7 @@ class GraphAPIError(Exception):
         self.status = status
         self.code = code
         self.message = message
+
 
 class _RateLimiter:
     """Simple token bucket rate limiter"""
@@ -50,6 +51,7 @@ class _RateLimiter:
             else:
                 self.tokens -= 1
 
+
 class _CircuitBreaker:
     """Simple circuit breaker"""
     def __init__(self, fail_threshold: int = 3, cooldown_sec: int = 5):
@@ -59,62 +61,84 @@ class _CircuitBreaker:
         self.cooldown_sec = cooldown_sec
         self.lock = threading.Lock()
 
-    def record(self, success: bool):
+    def before(self) -> None:
         with self.lock:
-            if success:
+            now = time.time()
+            if now < self.open_until:
+                raise GraphAPIError(503, "CircuitOpen", "circuit open")
+
+    def record(self, ok: bool) -> None:
+        with self.lock:
+            if ok:
                 self.fail = 0
             else:
                 self.fail += 1
                 if self.fail >= self.fail_threshold:
                     self.open_until = time.time() + self.cooldown_sec
 
-_rate_limiter = _RateLimiter(rate_per_sec=5, burst=5)   # 5 per second, burst 5 (can be tuned for production)
-_circuit = _CircuitBreaker(fail_threshold=3, cooldown_sec=5)  # block for 5 seconds after 3 failures
 
- # -----------------------------
- # MCP API facade function sample
- # -----------------------------
+_rate_limiter = _RateLimiter(
+    rate_per_sec=float(os.getenv("RATE_PER_SEC", "5")),
+    burst=int(os.getenv("RATE_BURST", "5")),
+)
+_circuit = _CircuitBreaker(
+    fail_threshold=int(os.getenv("CB_FAILS", "3")),
+    cooldown_sec=int(os.getenv("CB_COOLDOWN_SEC", "5")),
+)
+_HTTPX = httpx.Client(timeout=int(os.getenv("HTTP_TIMEOUT", "30")))
+
+# -----------------------------
+# MCP API facade function sample
+# -----------------------------
 def todo_delta_lists(token: str, delta_link: str = None) -> Dict[str, Any]:
-    """
-    Get delta of lists
-    """
+    """Get delta of lists"""
     return delta_lists(token, delta_link)
+
 
 def todo_delta_tasks(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
     """Get delta of tasks"""
     return delta_tasks(token, list_id, delta_link)
 
+
 def todo_walk_delta_lists(token: str, delta_link: str = None) -> Dict[str, Any]:
     """Iterate all list deltas"""
     return walk_delta_lists(token, delta_link)
+
 
 def todo_walk_delta_tasks(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
     """Iterate all task deltas"""
     return walk_delta_tasks(token, list_id, delta_link)
 
+
 def todo_find_or_create_list(token: str, display_name: str) -> Dict[str, Any]:
     """Create list if not exists"""
     return find_or_create_list(token, display_name)
+
 
 def todo_quick_task(token: str, list_name: str, title: str, **kwargs) -> Dict[str, Any]:
     """Quickly create a task (based on list_name)"""
     return quick_task(token, list_name, title, **kwargs)
 
+
 def todo_complete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     """Complete a task"""
     return complete_task(token, list_id, task_id)
+
 
 def todo_reopen_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     """Reopen a task"""
     return reopen_task(token, list_id, task_id)
 
+
 def todo_snooze_task(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> Dict[str, Any]:
     """Snooze a task"""
     return snooze_task(token, list_id, task_id, remind_at_iso, tz)
 
-def todo_batch_get_tasks(token: str, list_id: str, task_ids: list) -> Dict[str, Any]:
+
+def todo_batch_get_tasks(token: str, list_id: str, task_ids: List[str]) -> Dict[str, Any]:
     """Batch get multiple tasks"""
     return batch_get_tasks(token, list_id, task_ids)
+
 
 def todo_get_task_select(
     token: str,
@@ -126,96 +150,108 @@ def todo_get_task_select(
     """Get only specific fields"""
     return get_task_select(token, list_id, task_id, select=select, expand=expand)
 
+
 def todo_list_tasks_lite(token: str, list_id: str, top: int = 20) -> Dict[str, Any]:
     """Get lite task list"""
     return list_tasks_lite(token, list_id, top)
+
 
 def todo_list_tasks_all_lite(token: str, list_id: str, page_size: int = 100) -> Dict[str, Any]:
     """Get all lite tasks"""
     return list_tasks_all_lite(token, list_id, page_size)
 
+
 def todo_complete_task_lite(token: str, list_id: str, task_id: str) -> str:
     """Complete lite task"""
     return complete_task_lite(token, list_id, task_id)
+
 
 def todo_snooze_task_lite(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> str:
     """Snooze lite task"""
     return snooze_task_lite(token, list_id, task_id, remind_at_iso, tz)
 
+
 def todo_walk_delta_tasks_lite(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
     """Iterate all lite task deltas"""
     return walk_delta_tasks_lite(token, list_id, delta_link)
 
- # -----------------------------
- # Simple Facade
- # -----------------------------
+# -----------------------------
+# Simple Facade
+# -----------------------------
 def todo_list(token: str) -> Dict[str, Any]:
     """Facade to get all lists"""
     return list_lists(token)
+
 
 def todo_task(token: str, list_id: str, top: int = 10) -> Dict[str, Any]:
     """Facade to get tasks of a specific list"""
     return list_tasks(token, list_id, top=top)
 
+
 def todo_create_list(token: str, name: str) -> Dict[str, Any]:
     """Facade to create a list"""
     return create_list(token, name)
 
+
 def todo_create_task(token: str, list_id: str, title: str, **kwargs) -> Dict[str, Any]:
     """Facade to create a task"""
     return create_task(token, list_id, title, **kwargs)
+
 
 def todo_delete_list(token: str, list_id: str) -> Dict[str, Any]:
     """Facade to delete a list"""
     return delete_list(token, list_id)
 
 # -----------------------------
-# HTTP 래퍼
+# HTTP Wrapper
 # -----------------------------
 def _request(method: Callable, url: str, token: str, *, max_retries: int = 2, **kwargs) -> Dict[str, Any]:
     """429/5xx backoff + rate limit + circuit breaker + standardized error handling"""
-    # Circuit breaker: always initialize as success before request
-    _circuit.record(True)
+    _circuit.before()
     _rate_limiter.acquire()
+
     headers = _headers(token)
     if "headers" in kwargs:
         headers.update(kwargs["headers"])
         kwargs.pop("headers")
-    backoff = 0.8
-    try:
-        for attempt in range(max_retries + 1):
-            with httpx.Client(timeout=30) as c:
-                r = method(c, url, headers=headers, **kwargs)
-            if r.status_code < 400:
-                _circuit.record(True)
-                # 일부 204(DELETE 등) 대응
-                return r.json() if r.content else {}
-            # 오류 축약 파싱
-            try:
-                err = r.json().get("error", {})
-                code = err.get("code") or "Error"
-                msg = err.get("message") or r.text
-            except Exception:
-                code, msg = "Error", r.text[:120]
-            # 재시도 대상
-            if r.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
-                time.sleep(backoff)
-                backoff *= 2
-                continue
-            _circuit.record(False)
-            raise GraphAPIError(r.status_code, code, (msg or "")[:120])
-    except GraphAPIError:
-        raise
-    except Exception as e:
-        _circuit.record(False)
-        raise GraphAPIError(500, "Client", str(e)[:120])
 
+    backoff = 0.8
+    for attempt in range(max_retries + 1):
+        try:
+            r = method(_HTTPX, url, headers=headers, **kwargs)
+        except Exception as e:
+            _circuit.record(False)
+            raise GraphAPIError(500, "Client", str(e)[:120])
+
+        if r.status_code < 400:
+            _circuit.record(True)
+            return r.json() if r.content else {}
+
+        try:
+            err = r.json().get("error", {})
+            code = err.get("code") or "Error"
+            msg = err.get("message") or r.text
+        except Exception:
+            code, msg = "Error", r.text[:120]
+
+        if r.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
+            time.sleep(backoff)
+            backoff *= 2
+            continue
+
+        _circuit.record(False)
+        raise GraphAPIError(r.status_code, code, (msg or "")[:120])
+
+# -----------------------------
+# Common Utilities
+# -----------------------------
 def _iso(dt: datetime) -> str:
     """datetime → ISO(UTC) string (microseconds removed).
     If naive datetime is given, assume UTC."""
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+
 
 def _project_task(item: Dict[str, Any]) -> Dict[str, Any]:
     """Project minimal fields for task (Lite response)"""
@@ -228,33 +264,21 @@ def _project_task(item: Dict[str, Any]) -> Dict[str, Any]:
         "importance": item.get("importance"),
     }
 
+
 Importance = Literal["low", "normal", "high"]
 Status = Literal["notStarted", "inProgress", "completed", "waitingOnOthers", "deferred"]
 
 # -----------------------------
-# Lists
+# List (Core)
 # -----------------------------
 def list_lists(token: str) -> Dict[str, Any]:
-    try:
-        return _request(lambda c, u, **kw: c.get(u, **kw), f"{GRAPH}/me/todo/lists", token)
-    except GraphAPIError as e:
-        return {"error": str(e), "code": e.code, "status": e.status}
+    return _request(lambda c, u, **kw: c.get(u, **kw), f"{GRAPH}/me/todo/lists", token)
 
-def create_list(token: str, display_name: str) -> Dict[str, Any]:
-    body = {"displayName": display_name}
-    try:
-        return _request(lambda c, u, **kw: c.post(u, json=body, **kw), f"{GRAPH}/me/todo/lists", token)
-    except GraphAPIError as e:
-        return {"error": str(e), "code": e.code, "status": e.status}
 
-def update_list(token: str, list_id: str, display_name: Optional[str] = None) -> Dict[str, Any]:
-    patch: Dict[str, Any] = {}
-    if display_name is not None:
-        patch["displayName"] = display_name
-    try:
-        return _request(lambda c, u, **kw: c.patch(u, json=patch, **kw), f"{GRAPH}/me/todo/lists/{list_id}", token)
-    except GraphAPIError as e:
-        return {"error": str(e), "code": e.code, "status": e.status}
+def create_list(token: str, name: str) -> Dict[str, Any]:
+    body = {"displayName": name}
+    return _request(lambda c, u, **kw: c.post(u, json=body, **kw), f"{GRAPH}/me/todo/lists", token)
+
 
 def delete_list(token: str, list_id: str) -> Dict[str, Any]:
     try:
@@ -264,7 +288,7 @@ def delete_list(token: str, list_id: str) -> Dict[str, Any]:
         return {"error": str(e), "code": e.code, "status": e.status}
 
 # -----------------------------
-# 태스크 (코어)
+# Task (Core)
 # -----------------------------
 def list_tasks(token: str, list_id: str, filter_expr: Optional[str] = None, top: Optional[int] = None) -> Dict[str, Any]:
     params: Dict[str, str] = {}
@@ -277,8 +301,9 @@ def list_tasks(token: str, list_id: str, filter_expr: Optional[str] = None, top:
     except GraphAPIError as e:
         return {"error": str(e), "code": e.code, "status": e.status}
 
+
 def list_tasks_all(token: str, list_id: str, filter_expr: Optional[str] = None, page_size: int = 100) -> Iterator[Dict[str, Any]]:
-    """@odata.nextLink 자동 추적 제너레이터"""
+    """@odata.nextLink auto-follow generator"""
     params: Dict[str, str] = {}
     if filter_expr:
         params["$filter"] = filter_expr
@@ -296,8 +321,10 @@ def list_tasks_all(token: str, list_id: str, filter_expr: Optional[str] = None, 
             break
         url = next_link
 
+
 def get_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     return _request(lambda c, u, **kw: c.get(u, **kw), f"{GRAPH}/me/todo/lists/{list_id}/tasks/{task_id}", token)
+
 
 def create_task(
     token: str,
@@ -327,8 +354,10 @@ def create_task(
 
     return _request(lambda c, u, **kw: c.post(u, json=payload, **kw), f"{GRAPH}/me/todo/lists/{list_id}/tasks", token)
 
+
 def update_task(token: str, list_id: str, task_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     return _request(lambda c, u, **kw: c.patch(u, json=patch, **kw), f"{GRAPH}/me/todo/lists/{list_id}/tasks/{task_id}", token)
+
 
 def delete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     try:
@@ -338,23 +367,26 @@ def delete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
         return {"error": str(e), "code": e.code, "status": e.status}
 
 # -----------------------------
-# 델타
+# Delta
 # -----------------------------
 def delta_lists(token: str, delta_link: Optional[str] = None) -> Dict[str, Any]:
     url = delta_link or f"{GRAPH}/me/todo/lists/delta"
     return _request(lambda c, u, **kw: c.get(u, **kw), url, token)
 
+
 def delta_tasks(token: str, list_id: str, delta_link: Optional[str] = None) -> Dict[str, Any]:
     url = delta_link or f"{GRAPH}/me/todo/lists/{list_id}/tasks/delta"
     return _request(lambda c, u, **kw: c.get(u, **kw), url, token)
 
+
 def walk_delta_lists(token: str, delta_link: Optional[str] = None) -> Dict[str, Any]:
-    """deltaLink/nextLink를 함께 반환해 호출자가 보관·재사용"""
+    """Returns both deltaLink/nextLink for caller to store and reuse"""
     data = delta_lists(token, delta_link=delta_link)
     return {
         "value": data.get("value", []),
         "deltaLink": data.get("@odata.deltaLink") or data.get("@odata.nextLink"),
     }
+
 
 def walk_delta_tasks(token: str, list_id: str, delta_link: Optional[str] = None) -> Dict[str, Any]:
     data = delta_tasks(token, list_id, delta_link=delta_link)
@@ -364,7 +396,7 @@ def walk_delta_tasks(token: str, list_id: str, delta_link: Optional[str] = None)
     }
 
 # -----------------------------
-# 편의/업무 동사
+# Convenience/Business Verbs
 # -----------------------------
 def find_or_create_list(token: str, display_name: str) -> Dict[str, Any]:
     lists = list_lists(token).get("value", [])
@@ -372,6 +404,7 @@ def find_or_create_list(token: str, display_name: str) -> Dict[str, Any]:
         if li.get("displayName") == display_name:
             return li
     return create_list(token, display_name)
+
 
 def quick_task(
     token: str,
@@ -397,6 +430,7 @@ def quick_task(
         importance=importance,
     )
 
+
 def complete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     patch = {
         "status": "completed",
@@ -404,19 +438,21 @@ def complete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     }
     return update_task(token, list_id, task_id, patch)
 
+
 def reopen_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     patch = {"status": "notStarted"}
     return update_task(token, list_id, task_id, patch)
+
 
 def snooze_task(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> Dict[str, Any]:
     patch = {"reminderDateTime": {"dateTime": remind_at_iso, "timeZone": tz}}
     return update_task(token, list_id, task_id, patch)
 
 # -----------------------------
-# 대량/선택 쿼리
+# Bulk/Selective Query
 # -----------------------------
 def batch_get_tasks(token: str, list_id: str, task_ids: List[str]) -> Dict[str, Any]:
-    """Graph $batch(권장 20개/요청 이하)"""
+    """Graph $batch (Recommended: 20 items/request or less)"""
     requests = []
     for i, tid in enumerate(task_ids, 1):
         requests.append({
@@ -426,6 +462,7 @@ def batch_get_tasks(token: str, list_id: str, task_ids: List[str]) -> Dict[str, 
         })
     body = {"requests": requests}
     return _request(lambda c, u, **kw: c.post(u, json=body, **kw), f"{GRAPH}/$batch", token)
+
 
 def get_task_select(
     token: str,
@@ -443,7 +480,7 @@ def get_task_select(
     return _request(lambda c, u, **kw: c.get(u, params=params, **kw), url, token)
 
 # -----------------------------
-# LLM-Lite 파사드(짧은 I/O)
+# LLM-Lite Facade (Short I/O)
 # -----------------------------
 def quick_task_lite(
     token: str,
@@ -455,7 +492,7 @@ def quick_task_lite(
     remind_in_hours: Optional[int] = None,
     importance: Importance = "normal",
 ) -> str:
-    """성공: 'ok:<task_id>'"""
+    """Success: 'ok:<task_id>'"""
     li = find_or_create_list(token, list_name)
     due = _iso(datetime.now() + timedelta(days=due_in_days)) if due_in_days is not None else None
     reminder = _iso(datetime.now() + timedelta(hours=remind_in_hours)) if remind_in_hours is not None else None
@@ -471,6 +508,7 @@ def quick_task_lite(
     )
     return f"ok:{created.get('id')}"
 
+
 def list_tasks_lite(token: str, list_id: str, top: int = 20) -> Dict[str, Any]:
     params = {
         "$select": "id,title,status,dueDateTime,reminderDateTime,importance",
@@ -479,6 +517,7 @@ def list_tasks_lite(token: str, list_id: str, top: int = 20) -> Dict[str, Any]:
     data = _request(lambda c, u, **kw: c.get(u, params=params, **kw), f"{GRAPH}/me/todo/lists/{list_id}/tasks", token)
     items = [_project_task(x) for x in data.get("value", [])]
     return {"items": items, "next": data.get("@odata.nextLink")}
+
 
 def list_tasks_all_lite(token: str, list_id: str, page_size: int = 100) -> Dict[str, Any]:
     params = {
@@ -496,14 +535,17 @@ def list_tasks_all_lite(token: str, list_id: str, page_size: int = 100) -> Dict[
         url = nxt
     return {"items": out}
 
+
 def complete_task_lite(token: str, list_id: str, task_id: str) -> str:
     patch = {"status": "completed", "completedDateTime": {"dateTime": _iso(datetime.utcnow()), "timeZone": "UTC"}}
     _ = update_task(token, list_id, task_id, patch)
     return "ok"
 
+
 def snooze_task_lite(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> str:
     _ = update_task(token, list_id, task_id, {"reminderDateTime": {"dateTime": remind_at_iso, "timeZone": tz}})
     return "ok"
+
 
 def walk_delta_tasks_lite(token: str, list_id: str, delta_link: Optional[str] = None) -> Dict[str, Any]:
     data = delta_tasks(token, list_id, delta_link=delta_link)
