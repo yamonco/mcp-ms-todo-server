@@ -18,7 +18,7 @@ mcp-ms-todo-server/
 ├── .env.example         # Example environment variable file
 ├── Dockerfile           # Docker image build settings
 ├── README.md            # Project description and usage
-├── app/                 # Server application code (main.py, service_todo.py, tools.py, etc.)
+├── app/                 # Server application code (main.py, tools.py, clean-arch modules, etc.)
 ├── docker-compose.yml   # Docker Compose settings
 ├── secrets/             # Private data such as authentication tokens
 ```
@@ -146,7 +146,7 @@ Tool list/parameters can be checked from the `tools/list` result.
 ## Extensions & References
 
 - Graph API Official Docs: https://docs.microsoft.com/en-us/graph/api/overview
-- MCP server structure & extension: See code in app/ folder (main.py, service_todo.py, tools.py, etc.)
+- MCP server structure & extension: See code in app/ folder (main.py, tools.py, domain/usecases/infrastructure, container)
 
 ---
 

@@ -1,0 +1,16 @@
+{
+  "name": "todo.tasks.get",
+  "description": "Get tasks in a list (lite mode optional)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "list_id": {"type": "string"},
+      "user": {"type": "string"},
+      "top": {"type": "integer", "minimum": 1},
+      "lite": {"type": "boolean"}
+    },
+    "required": ["list_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "object"}
+}

@@ -1,0 +1,14 @@
+{
+  "name": "todo.sync.delta_tasks",
+  "description": "Get delta link or changes for tasks in a list",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "list_id": {"type": "string"},
+      "delta_link": {"type": "string"}
+    },
+    "required": ["list_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "object"}
+}

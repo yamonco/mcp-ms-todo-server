@@ -1,0 +1,14 @@
+{
+  "name": "todo.sync.walk_delta_tasks",
+  "description": "Walk all task deltas for a list until stable",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "list_id": {"type": "string"},
+      "delta_link": {"type": "string"}
+    },
+    "required": ["list_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "object"}
+}

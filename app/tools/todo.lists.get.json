@@ -1,0 +1,6 @@
+{
+  "name": "todo.lists.get",
+  "description": "Get all To Do lists",
+  "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+  "outputSchema": {"type": "object"}
+}

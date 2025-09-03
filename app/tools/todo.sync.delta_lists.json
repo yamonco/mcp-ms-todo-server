@@ -1,0 +1,12 @@
+{
+  "name": "todo.sync.delta_lists",
+  "description": "Get delta link or changes for lists",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "delta_link": {"type": "string"}
+    },
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "object"}
+}

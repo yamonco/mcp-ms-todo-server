@@ -8,8 +8,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Callable, Iterator, Literal, List
 
 import httpx
+from app.config import cfg
 
-GRAPH = "https://graph.microsoft.com/v1.0"
+GRAPH = cfg.graph_base_url
 
 
 def _headers(token: str) -> Dict[str, str]:
@@ -77,15 +78,9 @@ class _CircuitBreaker:
                     self.open_until = time.time() + self.cooldown_sec
 
 
-_rate_limiter = _RateLimiter(
-    rate_per_sec=float(os.getenv("RATE_PER_SEC", "5")),
-    burst=int(os.getenv("RATE_BURST", "5")),
-)
-_circuit = _CircuitBreaker(
-    fail_threshold=int(os.getenv("CB_FAILS", "3")),
-    cooldown_sec=int(os.getenv("CB_COOLDOWN_SEC", "5")),
-)
-_HTTPX = httpx.Client(timeout=int(os.getenv("HTTP_TIMEOUT", "30")))
+_rate_limiter = _RateLimiter(rate_per_sec=cfg.rate_per_sec, burst=cfg.rate_burst)
+_circuit = _CircuitBreaker(fail_threshold=cfg.cb_fails, cooldown_sec=cfg.cb_cooldown_sec)
+_HTTPX = httpx.Client(timeout=cfg.http_timeout)
 
 # -----------------------------
 # MCP API facade function sample
@@ -205,8 +200,27 @@ def todo_delete_list(token: str, list_id: str) -> Dict[str, Any]:
 # -----------------------------
 # HTTP Wrapper
 # -----------------------------
-def _request(method: Callable, url: str, token: str, *, max_retries: int = 2, **kwargs) -> Dict[str, Any]:
-    """429/5xx backoff + rate limit + circuit breaker + standardized error handling"""
+def _parse_retry_after(val: str) -> float:
+    """Parse Retry-After header (seconds or HTTP-date). Return seconds to sleep (>=0)."""
+    try:
+        s = float(val)
+        return max(0.0, s)
+    except Exception:
+        pass
+    # HTTP-date
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(val)
+        return max(0.0, (dt - datetime.utcnow().replace(tzinfo=dt.tzinfo)).total_seconds())
+    except Exception:
+        return 0.0
+
+
+def _request(method: Callable, url: str, token: str, *, max_retries: Optional[int] = None, **kwargs) -> Dict[str, Any]:
+    """429/5xx backoff + rate limit + circuit breaker + standardized error handling
+    - Honors Retry-After header when present
+    - max_retries uses env (default 2) when None
+    """
     _circuit.before()
     _rate_limiter.acquire()
 
@@ -215,8 +229,11 @@ def _request(method: Callable, url: str, token: str, *, max_retries: int = 2, **
         headers.update(kwargs["headers"])
         kwargs.pop("headers")
 
-    backoff = 0.8
-    for attempt in range(max_retries + 1):
+    retries = int(os.getenv("HTTP_MAX_RETRIES", "2")) if max_retries is None else max_retries
+    backoff = float(os.getenv("HTTP_BACKOFF_INITIAL", "0.8"))
+    backoff_factor = float(os.getenv("HTTP_BACKOFF_FACTOR", "2.0"))
+
+    for attempt in range(retries + 1):
         try:
             r = method(_HTTPX, url, headers=headers, **kwargs)
         except Exception as e:
@@ -234,9 +251,11 @@ def _request(method: Callable, url: str, token: str, *, max_retries: int = 2, **
         except Exception:
             code, msg = "Error", r.text[:120]
 
-        if r.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
-            time.sleep(backoff)
-            backoff *= 2
+        if r.status_code in (429, 500, 502, 503, 504) and attempt < retries:
+            ra = r.headers.get("Retry-After")
+            wait = _parse_retry_after(ra) if ra else backoff
+            time.sleep(max(0.0, wait))
+            backoff *= backoff_factor
             continue
 
         _circuit.record(False)
@@ -283,6 +302,13 @@ def create_list(token: str, name: str) -> Dict[str, Any]:
 def delete_list(token: str, list_id: str) -> Dict[str, Any]:
     try:
         _request(lambda c, u, **kw: c.delete(u, **kw), f"{GRAPH}/me/todo/lists/{list_id}", token)
+        return {"success": True}
+    except GraphAPIError as e:
+        return {"error": str(e), "code": e.code, "status": e.status}
+
+def delete_list_if_match(token: str, list_id: str, etag: str) -> Dict[str, Any]:
+    try:
+        _request(lambda c, u, **kw: c.delete(u, headers={"If-Match": etag}, **kw), f"{GRAPH}/me/todo/lists/{list_id}", token)
         return {"success": True}
     except GraphAPIError as e:
         return {"error": str(e), "code": e.code, "status": e.status}
@@ -358,10 +384,24 @@ def create_task(
 def update_task(token: str, list_id: str, task_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     return _request(lambda c, u, **kw: c.patch(u, json=patch, **kw), f"{GRAPH}/me/todo/lists/{list_id}/tasks/{task_id}", token)
 
+def update_task_if_match(token: str, list_id: str, task_id: str, patch: Dict[str, Any], etag: str) -> Dict[str, Any]:
+    return _request(
+        lambda c, u, **kw: c.patch(u, json=patch, headers={"If-Match": etag}, **kw),
+        f"{GRAPH}/me/todo/lists/{list_id}/tasks/{task_id}",
+        token,
+    )
+
 
 def delete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
     try:
         _request(lambda c, u, **kw: c.delete(u, **kw), f"{GRAPH}/me/todo/lists/{list_id}/tasks/{task_id}", token)
+        return {"success": True}
+    except GraphAPIError as e:
+        return {"error": str(e), "code": e.code, "status": e.status}
+
+def delete_task_if_match(token: str, list_id: str, task_id: str, etag: str) -> Dict[str, Any]:
+    try:
+        _request(lambda c, u, **kw: c.delete(u, headers={"If-Match": etag}, **kw), f"{GRAPH}/me/todo/lists/{list_id}/tasks/{task_id}", token)
         return {"success": True}
     except GraphAPIError as e:
         return {"error": str(e), "code": e.code, "status": e.status}
@@ -462,6 +502,14 @@ def batch_get_tasks(token: str, list_id: str, task_ids: List[str]) -> Dict[str, 
         })
     body = {"requests": requests}
     return _request(lambda c, u, **kw: c.post(u, json=body, **kw), f"{GRAPH}/$batch", token)
+
+def batch_get_tasks_chunked(token: str, list_id: str, task_ids: List[str], *, chunk_size: int = 20) -> Dict[str, Any]:
+    out: List[Dict[str, Any]] = []
+    for i in range(0, len(task_ids), chunk_size):
+        chunk = task_ids[i:i+chunk_size]
+        res = batch_get_tasks(token, list_id, chunk)
+        out.extend(res.get("responses", []))
+    return {"responses": out}
 
 
 def get_task_select(

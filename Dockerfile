@@ -1,33 +1,34 @@
 FROM python:3.11-slim
 
-ARG TZ=Asia/Seoul
-ENV TZ=${TZ}
-ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Install uv
-RUN pip install --no-cache-dir uv
+# System deps (optional; keep lean)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# Server dependencies (e.g. FastAPI)
+# Install runtime deps (from pyproject or explicit)
 COPY pyproject.toml ./
-RUN uv pip install --system --requirements pyproject.toml
+RUN python -m pip install --upgrade pip && \
+    python - <<'PY'
+import tomllib, sys, subprocess
+data = tomllib.loads(open('pyproject.toml','rb').read())
+deps = data.get('project',{}).get('dependencies',[])
+cmd = [sys.executable,'-m','pip','install','--no-cache-dir', *deps]
+print('Installing deps:', deps)
+subprocess.check_call(cmd)
+PY
 
-# Application code
-# Explicitly copy required files.
-# Example: COPY app/ ./app/
-# Or, for development convenience, volume mount (./app:/app) is already set in docker-compose, so can be omitted
-
-# Application code (운영 배포 시 이미지에 포함)
+# Copy app
 COPY app/ ./app/
 
-ENV PYTHONUNBUFFERED=1
-
+# Runtime
 ARG PORT=8081
 ENV PORT=${PORT}
 EXPOSE ${PORT}
 
-
-
-# Run MCP server (main:app location should match your project)
-CMD ["sh", "-c", "python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "${PORT}"]

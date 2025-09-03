@@ -119,26 +119,34 @@ server-logs:
 	$(COMPOSE_ROOT) logs -f
 
 server-restart:
-	$(COMPOSE_ROOT) restart
+	$(COMPOSE_ROOT) down
+	$(COMPOSE_ROOT) up -d
+
+# Run in-container smoke test (requires server container running)
+server-smoke:
+	$(COMPOSE_ROOT) exec $(SERVER_SERVICE) sh -lc 'API_KEY=$${API_KEY:-test-key} TOOL_SCHEMA_DIR=/app/app/tools .venv/bin/python -m app.smoke_test'
 
 # ---------- MCP JSON-RPC convenience ----------
 
 mcp-init:
 		curl -sS $(MCP_URL)/mcp \
 		  -H 'Content-Type: application/json' \
+		  -H "x-api-key: ${API_KEY}" \
 		  -d '{"jsonrpc":"2.0","id":"tools-1","method":"tools/list","params":{}}' | jq '.result.tools'
 
 mcp-tools:
 		curl -sS $(MCP_URL)/mcp \
 		  -H 'Content-Type: application/json' \
+		  -H "x-api-key: ${API_KEY}" \
 		  -d '{"jsonrpc":"2.0","id":"tools-raw","method":"tools/list","params":{}}' | jq .
 mcp-raw:
 	curl -sS $(MCP_URL)/mcp \
-		curl -sS $(MCP_URL)/mcp \
-		  -H 'Content-Type: application/json' \
-		  -d '{"jsonrpc":"2.0","id":"call-1","method":"$(METHOD)","params":$(PARAMS)}' | jq .
+	  -H 'Content-Type: application/json' \
+	  -H "x-api-key: ${API_KEY}" \
+	  -d '{"jsonrpc":"2.0","id":"call-1","method":"$(METHOD)","params":$(PARAMS)}' | jq .
 PARAMS ?= {}
 mcp-call:
 	curl -sS $(MCP_URL)/mcp \
 	  -H 'Content-Type: application/json' \
+	  -H "x-api-key: ${API_KEY}" \
 	  -d '{"jsonrpc":"2.0","id":"call-1","method":"$(METHOD)","params":$(PARAMS)}' | jq .

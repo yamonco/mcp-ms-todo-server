@@ -1,0 +1,16 @@
+{
+  "name": "todo.tasks.lite_snooze",
+  "description": "Snooze a task (lite)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "list_id": {"type": "string"},
+      "task_id": {"type": "string"},
+      "remind_at_iso": {"type": "string", "format": "date-time"},
+      "tz": {"type": "string"}
+    },
+    "required": ["list_id", "task_id", "remind_at_iso"],
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "string"}
+}

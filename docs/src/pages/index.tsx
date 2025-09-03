@@ -3,7 +3,6 @@ import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
-import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Heading from '@theme/Heading';
 
 import styles from './index.module.css';
@@ -14,27 +13,16 @@ function HomepageHeader() {
     <header className={clsx('hero hero--primary', styles.heroBanner)}>
       <div className="container">
         <Heading as="h1" className="hero__title">
-          MCP-MS-TODO-SERVER
+          {siteConfig.title}
         </Heading>
         <p className="hero__subtitle">
-          Unified automation server for Microsoft To Do, powered by MCP & FastAPI.<br />
-          <b>Organizational (MS365) optimized. Personal account support planned.</b>
+          {siteConfig.tagline}
         </p>
         <div className={styles.buttons}>
           <Link
             className="button button--secondary button--lg"
-            to="/docs/project-overview">
-            Project Overview
-          </Link>
-          <Link
-            className="button button--primary button--lg"
-            to="/docs/getting-started">
-            Get Started
-          </Link>
-          <Link
-            className="button button--secondary button--lg"
-            to="/docs/api-reference">
-            API Reference
+            to="/docs/intro">
+            Open Documentation
           </Link>
         </div>
       </div>
@@ -46,11 +34,21 @@ export default function Home(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
-      title={`Hello from ${siteConfig.title}`}
-      description="Description will go into a meta tag in <head />">
+      title={`Docs | ${siteConfig.title}`}
+      description="MCP server for Microsoft To Do (clean architecture)">
       <HomepageHeader />
       <main>
-        <HomepageFeatures />
+        <section className="container">
+          <div className="row">
+            <div className="col col--12">
+              <h2>About</h2>
+              <p>
+                Cleanly layered MCP server that exposes Microsoft To Do over JSON-RPC (initialize, tools/list, tools/call).
+                Authentication is handled by an external helper; only the access token is shared via a read-only secrets volume.
+              </p>
+            </div>
+          </div>
+        </section>
       </main>
     </Layout>
   );

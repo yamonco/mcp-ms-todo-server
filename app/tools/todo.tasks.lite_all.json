@@ -1,0 +1,14 @@
+{
+  "name": "todo.tasks.lite_all",
+  "description": "Get all lite tasks for a list",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "list_id": {"type": "string"},
+      "page_size": {"type": "integer", "minimum": 1}
+    },
+    "required": ["list_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "object"}
+}

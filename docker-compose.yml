@@ -23,5 +23,5 @@ services:
       - "${PORT}:${PORT}"
     volumes:
       - "${HOST_SECRETS}:${SERVER_CTR_SECRETS}:ro"   # ./secrets -> /app/secrets (read-only)
-      - "./app:/app"
+      #- "./app:/app"
     restart: unless-stopped

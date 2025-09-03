@@ -1,0 +1,15 @@
+{
+  "name": "todo.lists.mutate",
+  "description": "Create/Delete/Rename a list",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {"type": "string", "enum": ["create", "delete", "rename"]},
+      "list_id": {"type": "string"},
+      "display_name": {"type": "string"}
+    },
+    "required": ["action"],
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "object"}
+}

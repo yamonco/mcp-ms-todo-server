@@ -1,0 +1,14 @@
+{
+  "name": "todo.tasks.delete",
+  "description": "Delete a task",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "list_id": {"type": "string"},
+      "task_id": {"type": "string"}
+    },
+    "required": ["list_id", "task_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {"type": "object"}
+}
