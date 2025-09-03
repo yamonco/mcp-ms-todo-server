@@ -8,8 +8,10 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
+import asyncio
 
-from fastapi import FastAPI, Request, Header, HTTPException
+from fastapi import FastAPI, Request, Header, HTTPException, Response
+from fastapi.responses import JSONResponse as FastAPIJSONResponse
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
@@ -67,6 +69,39 @@ def mcp_manifest():
     tools, _ = _list_tools(None)
     return {"tools": tools}
 
+# SSE client registry (simple fan-out)
+_sse_clients: set[asyncio.Queue[str]] = set()
+
+@app.get("/mcp")
+async def mcp_sse(request: Request):
+    """Optional SSE stream for clients that open a separate event channel.
+    We broadcast JSON-RPC responses as SSE data frames on this channel.
+    """
+    accept = request.headers.get("accept", "")
+    if "text/event-stream" not in accept:
+        # For non-SSE GET, return capabilities quickly
+        return JSONResponse({"server": CAPABILITIES["server"], "protocolRevision": MCP_PROTOCOL_REV})
+
+    q: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
+    _sse_clients.add(q)
+
+    async def event_gen():
+        try:
+            # Initial hello
+            yield f": keep-alive\n\n"
+            while True:
+                try:
+                    item = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {item}\n\n"
+                except asyncio.TimeoutError:
+                    # keep alive comment
+                    yield f": ping\n\n"
+                    continue
+        finally:
+            _sse_clients.discard(q)
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
 # CORS 제한: 모든 Origin 차단 (필요시 특정 도메인만 허용)
 app.add_middleware(
     CORSMiddleware,
@@ -111,7 +146,6 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
     단일 JSON-RPC 엔드포인트 (SSE/HTTP 자동 분기)
     """
     accept = request.headers.get("accept", "")
-    is_sse = cfg.sse_enabled and ("text/event-stream" in accept)
 
     import time
     t0 = time.time()
@@ -134,6 +168,18 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
     method = req.method or ""
     params = req.params or {}
 
+    # JSON-RPC notifications (no id): acknowledge without body
+    # Common notifications include 'notifications/initialized'
+    if req.id is None:
+        logger.info(json.dumps({"event": "notification", "method": method}))
+        # Some clients warn on 204; return empty JSON 200 to be lenient
+        return FastAPIJSONResponse(content={})
+
+    # Some clients may send notifications with an id (non-standard).
+    # For methods under notifications/*, return empty success to avoid warnings.
+    if isinstance(method, str) and method.startswith("notifications/"):
+        return _jsonrpc_ok(req.id, {})
+
     # Compatibility shim: allow calling tool name directly as JSON-RPC method
     # e.g., method="todo.lists.get" with params={} → tools/call {name, arguments}
     if method not in ("initialize", "tools/list", "tools/call"):
@@ -152,27 +198,14 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
         except Exception:
             logger.info(f"{event} id={req.id} method={method} corr={correlation_id} {fields}")
 
+    # initialize/tools/list는 항상 JSON 응답
+    # SSE는 tools/call에서만 허용 (Accept: text/event-stream)
+    is_sse = cfg.sse_enabled and (method == "tools/call") and ("text/event-stream" in accept)
+
     # SSE 스트리밍 응답 핸들러
     async def sse_stream():
         import asyncio
-        # 초기화/툴 목록은 한 번만 전송
-        if method == "initialize":
-            msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": {
-                "capabilities": CAPABILITIES["capabilities"],
-                "server": CAPABILITIES["server"],
-                "protocolRevision": MCP_PROTOCOL_REV
-            }})
-            yield f"data: {msg}\n\n"
-            return
-        if method == "tools/list":
-            cursor = params.get("cursor")
-            tools, next_cursor = _list_tools(cursor)
-            result = {"tools": tools}
-            if next_cursor is not None:
-                result["nextCursor"] = next_cursor
-            msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": result})
-            yield f"data: {msg}\n\n"
-            return
+        # SSE는 tools/call에서만 사용
         if method == "tools/call":
             name = params.get("name")
             arguments = params.get("arguments", {})
@@ -201,7 +234,7 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
                 msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32000, "message": f"Server error: {str(e)}"}})
                 yield f"data: {msg}\n\n"
             return
-        # 알 수 없는 메서드
+        # 그 외는 JSON으로만 응답하도록 처리
         msg = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "error": {"code": -32601, "message": "Method not found"}})
         yield f"data: {msg}\n\n"
         return
@@ -216,11 +249,19 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
     # -------------------------
     if method == "initialize":
         log_event("rpc", stage="initialize")
-        return _jsonrpc_ok(req.id, {
+        resp = {
             "capabilities": CAPABILITIES["capabilities"],
             "server": CAPABILITIES["server"],
             "protocolRevision": MCP_PROTOCOL_REV
-        }, headers={"x-correlation-id": correlation_id})
+        }
+        # broadcast to SSE listeners as well
+        try:
+            payload = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": resp})
+            for q in list(_sse_clients):
+                q.put_nowait(payload)
+        except Exception:
+            pass
+        return _jsonrpc_ok(req.id, resp, headers={"x-correlation-id": correlation_id})
 
     # -------------------------
     # tools/list
@@ -232,6 +273,12 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
         if next_cursor is not None:
             result["nextCursor"] = next_cursor
         log_event("rpc", stage="tools/list")
+        try:
+            payload = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": result})
+            for q in list(_sse_clients):
+                q.put_nowait(payload)
+        except Exception:
+            pass
         return _jsonrpc_ok(req.id, result, headers={"x-correlation-id": correlation_id})
 
     # -------------------------
@@ -247,6 +294,13 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
             result = _call_tool(name, arguments)
             dt = int((time.time() - t0) * 1000)
             log_event("rpc", stage="tools/call", tool=name, ms=dt)
+            # broadcast to SSE listeners as well
+            try:
+                payload = json.dumps({"jsonrpc": MCP_JSONRPC_VERSION, "id": req.id, "result": result})
+                for q in list(_sse_clients):
+                    q.put_nowait(payload)
+            except Exception:
+                pass
             return _jsonrpc_ok(req.id, result, headers={"x-correlation-id": correlation_id})
         except TypeError as te:
             log_event("rpc.error", tool=name, reason="type_error", msg=str(te))

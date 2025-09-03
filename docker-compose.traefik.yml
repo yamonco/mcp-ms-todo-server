@@ -1,16 +1,17 @@
-version: '3.9'
 services:
   mcp:
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.mcp.rule=Host(`mcp-todo.example.com`)"
-      - "traefik.http.routers.mcp.entryPoints=websecure"
-      - "traefik.http.routers.mcp.tls.certresolver=lets-encrypt"
-      - "traefik.http.services.mcp.loadbalancer.server.port=8080"
-      - "traefik.docker.network=traefik_public"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.routers.${ROUTER_NAME}.rule=Host(`${MCP_DOMAIN}`)"
+      - "traefik.http.routers.${ROUTER_NAME}.entryPoints=${TRAEFIK_ENTRYPOINTS}"
+      - "traefik.http.routers.${ROUTER_NAME}.tls=true"
+      - "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=${ACME_RESOLVER}"
+      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=${PORT}"
     networks:
-      - traefik_public
+      - traefik_ext
 
 networks:
-  traefik_public:
+  traefik_ext:
     external: true
+    name: ${TRAEFIK_NETWORK}

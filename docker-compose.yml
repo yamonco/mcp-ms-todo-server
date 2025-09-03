@@ -19,8 +19,6 @@ services:
       APP_PREFIX: ${APP_PREFIX}
       SCOPES: ${SCOPES}
       MCP_TOKEN_FILE: ${MCP_TOKEN_FILE}
-    ports:
-      - "${PORT}:${PORT}"
     volumes:
       - "${HOST_SECRETS}:${SERVER_CTR_SECRETS}:ro"   # ./secrets -> /app/secrets (read-only)
       #- "./app:/app"

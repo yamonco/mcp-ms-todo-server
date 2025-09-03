@@ -9,7 +9,9 @@ mcp-manifest:
 	python3 tools_manifest.py
 
 COMPOSE_TOOL = docker compose -f docker-compose-tool.yml --env-file .env
-COMPOSE_ROOT = docker compose -f docker-compose.yml   --env-file .env
+COMPOSE_ROOT    = docker compose -f docker-compose.yml   --env-file .env
+COMPOSE_DIRECT  = docker compose -f docker-compose.yml -f docker-compose.direct.yml   --env-file .env
+COMPOSE_TRAEFIK = docker compose -f docker-compose.yml -f docker-compose.traefik.yml  --env-file .env
 
 TOOL_SERVICE   = auth-tool
 SERVER_SERVICE = mcp
@@ -38,6 +40,10 @@ help:
 	@echo "  server-down      : Stop MCP server"
 	@echo "  server-logs      : Follow MCP server logs"
 	@echo "  server-restart   : Restart MCP server"
+	@echo "  server-up-direct : Start MCP server (direct port mapping)"
+	@echo "  server-down-direct: Stop MCP server (direct stack)"
+	@echo "  server-up-traefik: Start MCP server (Traefik labels)"
+	@echo "  server-down-traefik: Stop MCP server (Traefik stack)"
 	@echo "  mcp-init         : Call MCP initialize"
 	@echo "  mcp-tools        : Call MCP tools/list"
 	@echo "  mcp-raw          : Raw MCP tools/list response"
@@ -127,6 +133,23 @@ server-up:
 
 server-down:
 	$(COMPOSE_ROOT) down
+
+# Prefer explicit mode commands
+server-up-direct:
+	# Ensure Traefik stack is not running to avoid label/network conflicts
+	-$(COMPOSE_TRAEFIK) down --remove-orphans
+	$(COMPOSE_DIRECT) up -d
+
+server-down-direct:
+	$(COMPOSE_DIRECT) down --remove-orphans
+
+server-up-traefik:
+	# Ensure direct stack is not running to avoid port conflicts
+	-$(COMPOSE_DIRECT) down --remove-orphans
+	$(COMPOSE_TRAEFIK) up -d
+
+server-down-traefik:
+	$(COMPOSE_TRAEFIK) down --remove-orphans
 
 server-logs:
 	$(COMPOSE_ROOT) logs -f

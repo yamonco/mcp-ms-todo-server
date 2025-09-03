@@ -1,0 +1,4 @@
+services:
+  mcp:
+    ports:
+      - "${PORT}:${PORT}"
