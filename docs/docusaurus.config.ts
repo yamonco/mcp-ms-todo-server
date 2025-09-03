@@ -15,14 +15,14 @@ const config: Config = {
   },
 
   // Set the production url of your site here
-  url: 'https://your-org.example.com',
+  url: 'https://yamonco.github.io',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/mcp-ms-todo-server/',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'yamon',
+  organizationName: 'yamonco',
   projectName: 'mcp-ms-todo-server',
 
   onBrokenLinks: 'throw',
@@ -66,7 +66,7 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          href: 'https://github.com/yamon/mcp-ms-todo-server',
+          href: 'https://github.com/yamonco/mcp-ms-todo-server',
           label: 'GitHub',
           position: 'right',
         },

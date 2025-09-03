@@ -2,7 +2,8 @@
 .PHONY: help \
 	tool-build tool-up tool-down tool-exec az-cli-login az-login app-register set-tenant tool-account tool-token \
 	server-build server-up server-down server-logs server-restart \
-	mcp-init mcp-tools mcp-raw mcp-call mcp-manifest
+	mcp-init mcp-tools mcp-raw mcp-call mcp-manifest \
+	docs-install docs-build docs-start docs-serve
 ## MCP manifest 자동 생성
 mcp-manifest:
 	python3 tools_manifest.py
@@ -41,6 +42,10 @@ help:
 	@echo "  mcp-tools        : Call MCP tools/list"
 	@echo "  mcp-raw          : Raw MCP tools/list response"
 	@echo "  mcp-call         : Call arbitrary method (ex: make mcp-call METHOD=tools/list PARAMS='{}')"
+	@echo "  docs-install     : Install Docusaurus deps (in ./docs)"
+	@echo "  docs-build       : Build Docusaurus site (./docs/build)"
+	@echo "  docs-start       : Start Docusaurus dev server"
+	@echo "  docs-serve       : Serve built site locally"
 
 # ---------- Tool (auth-helper) ----------
 
@@ -150,3 +155,19 @@ mcp-call:
 	  -H 'Content-Type: application/json' \
 	  -H "x-api-key: ${API_KEY}" \
 	  -d '{"jsonrpc":"2.0","id":"call-1","method":"$(METHOD)","params":$(PARAMS)}' | jq .
+
+# ---------- Docs (Docusaurus) ----------
+
+DOCS_DIR=./docs
+
+docs-install:
+	cd $(DOCS_DIR) && npm ci
+
+docs-build:
+	cd $(DOCS_DIR) && npm run build
+
+docs-start:
+	cd $(DOCS_DIR) && npm start
+
+docs-serve:
+	cd $(DOCS_DIR) && npm run serve
