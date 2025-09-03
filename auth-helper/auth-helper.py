@@ -58,7 +58,7 @@ class AuthHelper:
     def _normalize_scopes(self, scopes_val: Any):
         """
         scopes를 리스트로 정규화.
-        openid/profile/offline_access는 제거(디바이스 플로우 기본 스코프 아님).
+        openid/profile는 제거하고, refresh_token 발급을 위해 offline_access는 반드시 포함.
         """
         if isinstance(scopes_val, str):
             items = scopes_val.split()
@@ -67,8 +67,8 @@ class AuthHelper:
         else:
             items = ["Tasks.ReadWrite"]
 
-        banned = {"offline_access", "openid", "profile"}
-        return [s for s in items if s and s not in banned]
+        items = [s for s in items if s and s not in {"openid", "profile", "offline_access"}]
+        return items
 
     def _load_json(self, path: str) -> Optional[Dict[str, Any]]:
         try:
@@ -287,6 +287,90 @@ class AuthHelper:
         return False
 
     # ---------------------------
+    # 갱신(Refresh Token)
+    # ---------------------------
+    def _refresh_with_refresh_token(self, token: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        OAuth2 v2.0 refresh_token 그랜트로 토큰 갱신.
+        Public client에서는 client_secret 없이 가능.
+        """
+        rt = token.get("refresh_token")
+        if not rt:
+            print("[갱신 불가] refresh_token 없음", flush=True)
+            return None
+        tenant = self.tenant_id or "organizations"
+        url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+        data = {
+            "client_id": self.client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": rt,
+            "scope": " ".join(self.scopes) or "Tasks.ReadWrite",
+        }
+        try:
+            resp = requests.post(url, data=data, timeout=15)
+            if resp.status_code != 200:
+                print(f"[갱신 실패] {resp.status_code}: {resp.text[:200]}", flush=True)
+                return None
+            res = resp.json()
+            # expires_on 계산 보정
+            try:
+                if "expires_in" in res and "expires_on" not in res:
+                    res["expires_on"] = int(time.time()) + int(res.get("expires_in", 0))
+            except Exception:
+                pass
+            return res
+        except Exception as e:
+            print(f"[갱신 오류] {e}", flush=True)
+            return None
+
+    def refresh_if_needed(self, slack_seconds: int = 600) -> bool:
+        """
+        만료 전 slack_seconds 이하로 남았거나 만료된 경우 refresh_token으로 갱신.
+        실패 시 디바이스 플로우로 폴백.
+        """
+        self._ensure_token_file()
+        token = self.load_token() or {}
+        now = int(time.time())
+        try:
+            exp = int(token.get("expires_on", 0))
+        except Exception:
+            exp = 0
+
+        if token.get("access_token") and exp and (exp - now) > slack_seconds:
+            print("[갱신 불필요] 만료까지 여유 있음", flush=True)
+            return True
+
+        print("[갱신 시도] refresh_token 기반", flush=True)
+        new_tok = self._refresh_with_refresh_token(token)
+        if new_tok and "access_token" in new_tok:
+            self.save_token(new_tok)
+            print("[갱신 성공] refresh_token 사용", flush=True)
+            return True
+
+        print("[갱신 폴백] 디바이스 코드 인증으로 전환", flush=True)
+        new_tok = self.device_flow_auth()
+        if new_tok and "access_token" in new_tok:
+            self.save_token(new_tok)
+            print("[갱신 성공] 디바이스 코드 재인증", flush=True)
+            return True
+        print("[갱신 실패]", flush=True)
+        return False
+
+    def auto_refresh(self, interval_seconds: int = 60, slack_seconds: int = 600):
+        """
+        주기적으로 token.json을 점검하여 만료 전에 자동 갱신.
+        컨테이너에서 포그라운드 서비스로 실행 권장.
+        """
+        print(f"[auto-refresh] interval={interval_seconds}s slack={slack_seconds}s", flush=True)
+        while True:
+            try:
+                ok = self.refresh_if_needed(slack_seconds=slack_seconds)
+                print(f"[auto-refresh] tick: {'ok' if ok else 'fail'}", flush=True)
+            except Exception as e:
+                print(f"[auto-refresh] 오류: {e}", flush=True)
+            time.sleep(max(10, int(interval_seconds)))
+
+    # ---------------------------
     # Azure CLI 보조
     # ---------------------------
     def ensure_az_login(self) -> bool:
@@ -456,6 +540,13 @@ class AuthHelper:
         sub.add_parser("logout")
         sub.add_parser("register-app")
 
+        p_refresh = sub.add_parser("refresh")
+        p_refresh.add_argument("--slack-seconds", type=int, default=int(os.environ.get("REFRESH_SLACK", "600")))
+
+        p_auto = sub.add_parser("auto-refresh")
+        p_auto.add_argument("--interval-seconds", type=int, default=int(os.environ.get("REFRESH_INTERVAL", "60")))
+        p_auto.add_argument("--slack-seconds", type=int, default=int(os.environ.get("REFRESH_SLACK", "600")))
+
         p_set = sub.add_parser("set-tenant")
         p_set.add_argument("--tenant", help="변경할 TENANT_ID(미지정 시 환경변수→프롬프트 순)")
 
@@ -472,6 +563,14 @@ class AuthHelper:
             self.logout()
         elif cmd == "register-app":
             self.register_app()
+        elif cmd == "refresh":
+            ok = self.refresh_if_needed(slack_seconds=getattr(args, "slack_seconds", 600))
+            sys.exit(0 if ok else 1)
+        elif cmd == "auto-refresh":
+            self.auto_refresh(
+                interval_seconds=getattr(args, "interval_seconds", 60),
+                slack_seconds=getattr(args, "slack_seconds", 600),
+            )
         elif cmd == "set-tenant":
             self.set_tenant(getattr(args, "tenant", None))
         else:

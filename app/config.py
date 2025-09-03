@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
 
@@ -33,14 +33,12 @@ class Config:
     api_key: str | None = os.getenv("API_KEY")
 
     # cors
-    allow_origins: List[str] = _get_env_list("ALLOW_ORIGINS", [])
+    allow_origins: List[str] = field(default_factory=lambda: _get_env_list("ALLOW_ORIGINS", []))
 
     # paths
     token_file: str = os.getenv("TOKEN_PATH", os.getenv("MCP_TOKEN_FILE", "/app/secrets/token.json"))
-    tool_schema_dir: str = os.getenv(
-        "TOOL_SCHEMA_DIR",
-        os.path.join(os.path.dirname(__file__), "tools"),
-    )
+    # Empty env values should fallback to default path
+    tool_schema_dir: str = os.getenv("TOOL_SCHEMA_DIR") or os.path.join(os.path.dirname(__file__), "tools")
 
     # http/client
     http_timeout: int = int(os.getenv("HTTP_TIMEOUT", "30"))

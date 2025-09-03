@@ -133,6 +133,15 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None)):
 
     method = req.method or ""
     params = req.params or {}
+
+    # Compatibility shim: allow calling tool name directly as JSON-RPC method
+    # e.g., method="todo.lists.get" with params={} → tools/call {name, arguments}
+    if method not in ("initialize", "tools/list", "tools/call"):
+        if isinstance(params, dict):
+            method = "tools/call"
+            params = {"name": req.method, "arguments": params}
+        else:
+            return _jsonrpc_err(req.id, -32602, "Invalid params")
     correlation_id = request.headers.get("x-correlation-id") or str(req.id) or "-"
 
     def log_event(event: str, **fields):

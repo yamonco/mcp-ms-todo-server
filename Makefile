@@ -97,6 +97,14 @@ az-login:
 tool-exec:
 	$(COMPOSE_TOOL) exec $(TOOL_SERVICE) sh -lc 'python3 -u /opt/auth-helper/auth-helper.py $(CMD)'
 
+# Run one-shot refresh (uses refresh_token if needed)
+tool-refresh:
+	$(COMPOSE_TOOL) exec $(TOOL_SERVICE) sh -lc 'REFRESH_SLACK=$${REFRESH_SLACK:-600} python3 -u /opt/auth-helper/auth-helper.py refresh --slack-seconds $$REFRESH_SLACK'
+
+# Start auto refresh loop inside helper container
+tool-auto-refresh:
+	$(COMPOSE_TOOL) exec -d $(TOOL_SERVICE) sh -lc 'REFRESH_INTERVAL=$${REFRESH_INTERVAL:-60}; REFRESH_SLACK=$${REFRESH_SLACK:-600}; python3 -u /opt/auth-helper/auth-helper.py auto-refresh --interval-seconds $$REFRESH_INTERVAL --slack-seconds $$REFRESH_SLACK'
+
 # token.json 에 TENANT_ID 저장: make set-tenant TENANT=<uuid>
 set-tenant:
 	@test -n "$(TENANT)" || (echo "TENANT 가 필요합니다. 예: make set-tenant TENANT=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" && false)
@@ -129,7 +137,7 @@ server-restart:
 
 # Run in-container smoke test (requires server container running)
 server-smoke:
-	$(COMPOSE_ROOT) exec $(SERVER_SERVICE) sh -lc 'API_KEY=$${API_KEY:-test-key} TOOL_SCHEMA_DIR=/app/app/tools .venv/bin/python -m app.smoke_test'
+	$(COMPOSE_ROOT) exec $(SERVER_SERVICE) sh -lc 'API_KEY=$${API_KEY:-test-key} TOOL_SCHEMA_DIR=/app/app/tools python -m app.smoke_test'
 
 # ---------- MCP JSON-RPC convenience ----------
 

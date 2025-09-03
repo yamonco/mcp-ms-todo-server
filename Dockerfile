@@ -16,7 +16,8 @@ COPY pyproject.toml ./
 RUN python -m pip install --upgrade pip && \
     python - <<'PY'
 import tomllib, sys, subprocess
-data = tomllib.loads(open('pyproject.toml','rb').read())
+with open('pyproject.toml','rb') as f:
+    data = tomllib.load(f)
 deps = data.get('project',{}).get('dependencies',[])
 cmd = [sys.executable,'-m','pip','install','--no-cache-dir', *deps]
 print('Installing deps:', deps)
@@ -31,4 +32,5 @@ ARG PORT=8081
 ENV PORT=${PORT}
 EXPOSE ${PORT}
 
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+# Use shell form to allow env expansion for PORT
+CMD ["sh", "-lc", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8081}"]
