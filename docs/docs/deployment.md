@@ -1,35 +1,30 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 ---
 
-# Deployment Guide
+# Deployment
 
-## Build the Site
-
+## Docker Compose (recommended)
 ```bash
-cd docs
-npm run build
+cp .env.example .env
+make db-up
+make app-register PROFILE=admin
+make dev-serve         # dev
+# or
+make prod-up           # prod (compose direct)
 ```
 
-## Local Preview
+Ensure `.env` has `API_KEY`, `DB_URL`, `ADMIN_*` configured. For prod, front with a reverse proxy and persistent volumes for DB.
 
-```bash
-npm run serve
-```
+## Environment
+- API key is required for admin endpoints (`X-API-Key`).
+- Tokens live in DB; no token files are mounted.
 
-## GitHub Pages Auto-Deploy
-- On push to master/main, GitHub Actions will build and deploy to the `gh-pages` branch.
-- See `.github/workflows/docusaurus.yml` for workflow details.
+## Health & Metrics
+- Health: `GET /health`
+- Metrics: `GET /metrics` (Prometheus)
 
-## Exclude Build Artifacts
-- `docs/build/` is excluded from git via `.gitignore`.
-
-## Custom Domain
-- To use a custom domain, add a `CNAME` file in `docs/static/` and configure repository settings.
-
----
-
-# Troubleshooting
-- Check Node.js and npm versions
-- Ensure Docker is running for API server
-- Review GitHub Actions logs for deployment issues
+## Troubleshooting
+- Check server logs and `LOG_LEVEL`
+- Verify DB connectivity (`DB_URL`)
+- Confirm app meta saved (`/admin/tokens/by-profile/<profile>`) and user API key created

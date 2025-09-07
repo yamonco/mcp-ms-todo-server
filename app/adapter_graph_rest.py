@@ -83,119 +83,8 @@ _circuit = _CircuitBreaker(fail_threshold=cfg.cb_fails, cooldown_sec=cfg.cb_cool
 _HTTPX = httpx.Client(timeout=cfg.http_timeout)
 
 # -----------------------------
-# MCP API facade function sample
+# Simple Facade helpers (kept minimal)
 # -----------------------------
-def todo_delta_lists(token: str, delta_link: str = None) -> Dict[str, Any]:
-    """Get delta of lists"""
-    return delta_lists(token, delta_link)
-
-
-def todo_delta_tasks(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
-    """Get delta of tasks"""
-    return delta_tasks(token, list_id, delta_link)
-
-
-def todo_walk_delta_lists(token: str, delta_link: str = None) -> Dict[str, Any]:
-    """Iterate all list deltas"""
-    return walk_delta_lists(token, delta_link)
-
-
-def todo_walk_delta_tasks(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
-    """Iterate all task deltas"""
-    return walk_delta_tasks(token, list_id, delta_link)
-
-
-def todo_find_or_create_list(token: str, display_name: str) -> Dict[str, Any]:
-    """Create list if not exists"""
-    return find_or_create_list(token, display_name)
-
-
-def todo_quick_task(token: str, list_name: str, title: str, **kwargs) -> Dict[str, Any]:
-    """Quickly create a task (based on list_name)"""
-    return quick_task(token, list_name, title, **kwargs)
-
-
-def todo_complete_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
-    """Complete a task"""
-    return complete_task(token, list_id, task_id)
-
-
-def todo_reopen_task(token: str, list_id: str, task_id: str) -> Dict[str, Any]:
-    """Reopen a task"""
-    return reopen_task(token, list_id, task_id)
-
-
-def todo_snooze_task(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> Dict[str, Any]:
-    """Snooze a task"""
-    return snooze_task(token, list_id, task_id, remind_at_iso, tz)
-
-
-def todo_batch_get_tasks(token: str, list_id: str, task_ids: List[str]) -> Dict[str, Any]:
-    """Batch get multiple tasks"""
-    return batch_get_tasks(token, list_id, task_ids)
-
-
-def todo_get_task_select(
-    token: str,
-    list_id: str,
-    task_id: str,
-    select: Optional[List[str]] = None,
-    expand: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Get only specific fields"""
-    return get_task_select(token, list_id, task_id, select=select, expand=expand)
-
-
-def todo_list_tasks_lite(token: str, list_id: str, top: int = 20) -> Dict[str, Any]:
-    """Get lite task list"""
-    return list_tasks_lite(token, list_id, top)
-
-
-def todo_list_tasks_all_lite(token: str, list_id: str, page_size: int = 100) -> Dict[str, Any]:
-    """Get all lite tasks"""
-    return list_tasks_all_lite(token, list_id, page_size)
-
-
-def todo_complete_task_lite(token: str, list_id: str, task_id: str) -> str:
-    """Complete lite task"""
-    return complete_task_lite(token, list_id, task_id)
-
-
-def todo_snooze_task_lite(token: str, list_id: str, task_id: str, remind_at_iso: str, tz: str = "Asia/Seoul") -> str:
-    """Snooze lite task"""
-    return snooze_task_lite(token, list_id, task_id, remind_at_iso, tz)
-
-
-def todo_walk_delta_tasks_lite(token: str, list_id: str, delta_link: str = None) -> Dict[str, Any]:
-    """Iterate all lite task deltas"""
-    return walk_delta_tasks_lite(token, list_id, delta_link)
-
-# -----------------------------
-# Simple Facade
-# -----------------------------
-def todo_list(token: str) -> Dict[str, Any]:
-    """Facade to get all lists"""
-    return list_lists(token)
-
-
-def todo_task(token: str, list_id: str, top: int = 10) -> Dict[str, Any]:
-    """Facade to get tasks of a specific list"""
-    return list_tasks(token, list_id, top=top)
-
-
-def todo_create_list(token: str, name: str) -> Dict[str, Any]:
-    """Facade to create a list"""
-    return create_list(token, name)
-
-
-def todo_create_task(token: str, list_id: str, title: str, **kwargs) -> Dict[str, Any]:
-    """Facade to create a task"""
-    return create_task(token, list_id, title, **kwargs)
-
-
-def todo_delete_list(token: str, list_id: str) -> Dict[str, Any]:
-    """Facade to delete a list"""
-    return delete_list(token, list_id)
 
 # -----------------------------
 # HTTP Wrapper
@@ -297,6 +186,11 @@ def list_lists(token: str) -> Dict[str, Any]:
 def create_list(token: str, name: str) -> Dict[str, Any]:
     body = {"displayName": name}
     return _request(lambda c, u, **kw: c.post(u, json=body, **kw), f"{GRAPH}/me/todo/lists", token)
+
+
+def update_list(token: str, list_id: str, display_name: str) -> Dict[str, Any]:
+    body = {"displayName": display_name}
+    return _request(lambda c, u, **kw: c.patch(u, json=body, **kw), f"{GRAPH}/me/todo/lists/{list_id}", token)
 
 
 def delete_list(token: str, list_id: str) -> Dict[str, Any]:

@@ -2,42 +2,34 @@
 sidebar_position: 2
 ---
 
-# Getting Started
+# Getting Started (Make + CLI)
 
 ## Prerequisites
-- Node.js 18+
-- Docker (recommended for deployment)
+- Docker (recommended) or local Python (uv/uvicorn)
+- SQLite (default) or external DB for `DB_URL`
 
-## Installation
-
+## Quick Setup
 ```bash
 cp .env.example .env
-docker compose build
-docker compose up -d
+make db-up                 # Alembic migrations
+make app-register PROFILE=admin   # Register/reuse app via Graph, save meta to DB
+
+# Import a user's token JSON into DB (replace with real values)
+echo '{"access_token":"...","refresh_token":"...","expires_on":1736200000}' \
+  | make token-import PROFILE=alice TOKEN='@-'
+
+# Create user API key mapped to the token profile
+make user-add USER=alice NAME="Alice" TEMPLATE=lite TOKEN_PROFILE=alice
+
+# Start server (dev)
+make dev-serve
 ```
 
-## Authentication
-- Device Code flow is used for Microsoft To Do API access.
-- See the API Reference for tool usage (`auth.start_device_code`, `auth.status`).
-
-## API Usage
-- All features are exposed via a single JSON-RPC endpoint `/mcp`.
-- Use `tools/list` to discover available tools.
-- Use `tools/call` to execute tools.
-
----
-
-# Example: Get Task List
-
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "todo.tasks.get",
-    "arguments": {
-      "action": "get",
-      "list_id": "<LIST_ID>"
-    }
-  }
-}
+## One‑Shot Onboarding
+```bash
+make onboard-user USER=alice NAME="Alice" FROM_FILE=./secrets/alice.json
 ```
+
+## Call Tools
+- List tools: `make mcp-tools API_KEY=<user_api_key>`
+- Call tool: `make mcp-call API_KEY=<user_api_key> METHOD=tools/call PARAMS='{"name":"todo.lists.get","arguments":{}}'`

@@ -2,28 +2,17 @@
 sidebar_position: 1
 ---
 
-# MCP-MS-TODO-SERVER Overview
+# Overview
 
-This documentation covers the MCP-MS-TODO-SERVER project, which integrates Microsoft To Do (Graph API) with MCP using FastAPI and JSON-RPC 2.0 tools.
+MCP‑MS‑TODO‑SERVER는 FastAPI 기반 MCP 서버로 Microsoft To Do(Graph API)를 통합합니다. 툴 호출은 `/mcp` JSON‑RPC로 통일되며, 인증/토큰은 DB에서만 관리합니다.
 
 ## Features
-- MCP JSON-RPC 2.0 tool server
-- Microsoft To Do (Graph API) integration
-- Docker-based deployment
-- Real-time log streaming (SSE)
-- REST and PowerShell support
+- JSON‑RPC 2.0 툴 서버, SSE 지원
+- DB 토큰 스토어, RBAC(역할‑도구 매핑)
+- Graph API 통합(앱 등록/재사용 자동화)
+- Docker/uv 개발환경 + Make 워크플로
 
-## Quick Links
+## Links
 - [Getting Started](./getting-started.md)
 - [API Reference](./api-reference.md)
-- [Tool Usage](./tools.md)
-- [Deployment Guide](./deployment.md)
-
----
-
-# Getting Started
-
-See the README.md for quick setup instructions, or follow the sidebar for detailed guides.
-
-# Contribution
-Feel free to open issues or pull requests for documentation improvements.
+- [Configuration](./configuration.md)

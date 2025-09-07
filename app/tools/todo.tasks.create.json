@@ -4,21 +4,17 @@
     "inputSchema": {
         "type": "object",
         "properties": {
-            "title": {
-                "type": "string"
-            },
-            "list_id": {
-                "type": "string"
-            },
-            "due": {
-                "type": "string",
-                "format": "date-time"
-            }
+            "title": { "type": "string" },
+            "list_id": { "type": "string" },
+            "body": { "type": "string" },
+            "due": { "type": "string", "format": "date-time" },
+            "time_zone": { "type": "string" },
+            "reminder": { "type": "string", "format": "date-time" },
+            "importance": { "type": "string", "enum": ["low", "normal", "high"] },
+            "status": { "type": "string", "enum": ["notStarted", "inProgress", "completed", "waitingOnOthers", "deferred"] },
+            "recurrence": { "type": "object" }
         },
-        "required": [
-            "title",
-            "list_id"
-        ],
+        "required": [ "title", "list_id" ],
         "additionalProperties": false
     },
     "outputSchema": {

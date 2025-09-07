@@ -2,35 +2,14 @@
 sidebar_position: 1
 ---
 
+# Introduction
 
-# MCP-MS-TODO-SERVER Introduction
+MCP‑MS‑TODO‑SERVER는 Microsoft Graph 기반의 To Do 통합 서버로, MCP(JSON‑RPC 2.0) 툴 인터페이스를 통해 작업을 자동화합니다. 모든 인증/토큰은 DB로만 관리하며, 앱 등록은 Microsoft Graph API로 일원화했습니다.
 
-MCP-MS-TODO-SERVER is a unified automation server for Microsoft To Do, built on MCP (Model Context Protocol) and FastAPI. It provides a scalable, extensible platform for integrating task management, automation, and orchestration in enterprise environments.
+## Highlights
+- JSON‑RPC 2.0 툴 서버 (`/mcp`)
+- DB‑first 인증(토큰/앱 메타) — 파일 스토어 제거
+- Graph API 기반 앱 등록(관리자 앱 권한), 디바이스 코드 제거
+- Docker/uv 기반 개발/운영, Make 타겟 제공
 
-## Key Features
-- **MCP JSON-RPC 2.0 Tool Server**: Modular automation via standardized tool interface
-- **Microsoft To Do Integration**: Connects to MS365 organizational accounts (personal support planned)
-- **Dockerized Deployment**: Easy setup and scalable operation
-- **Real-Time Log Streaming**: Monitor automation and API activity live
-- **REST & PowerShell Support**: Flexible integration for various clients
-
-## Architecture
-- **FastAPI** backend for high-performance API
-- **MCP Tool Engine** for JSON-RPC automation
-- **Microsoft Graph API** for To Do integration
-- **Docker** for deployment and isolation
-
-## Use Cases
-- Enterprise task automation
-- Workflow orchestration
-- Real-time monitoring and reporting
-- Integration with other MCP-compatible tools
-
-## Project Goals
-- Simplify Microsoft To Do automation for organizations
-- Provide a robust, extensible automation platform
-- Support both organizational and personal MS365 accounts (roadmap)
-
----
-
-For setup instructions, see [Getting Started](./getting-started.md).
+빠른 시작은 [Getting Started](./getting-started.md)를 참고하세요.

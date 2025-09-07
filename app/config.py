@@ -35,9 +35,7 @@ class Config:
     # cors
     allow_origins: List[str] = field(default_factory=lambda: _get_env_list("ALLOW_ORIGINS", []))
 
-    # paths
-    token_file: str = os.getenv("TOKEN_PATH", os.getenv("MCP_TOKEN_FILE", "/app/secrets/token.json"))
-    # Empty env values should fallback to default path
+    # tool schema dir
     tool_schema_dir: str = os.getenv("TOOL_SCHEMA_DIR") or os.path.join(os.path.dirname(__file__), "tools")
 
     # http/client
@@ -56,6 +54,11 @@ class Config:
 
     # features
     sse_enabled: bool = _get_env_bool("SSE_ENABLED", True)
+
+    # database
+    db_url: str | None = os.getenv("DB_URL")
+    db_echo: bool = _get_env_bool("DB_ECHO", False)
+    db_auto_create: bool = _get_env_bool("DB_AUTO_CREATE", True)
 
 
 cfg = Config()

@@ -5,7 +5,7 @@
 2. `API_KEY` 환경변수는 반드시 `.env`에 설정하고, 노출되지 않게 관리
 3. Cursor에서 프로젝트 열면 MCP 서버 등록 안내가 자동으로 뜨며, 승인 후 사용 가능
 
-### .mcp.json 예시
+### .mcp.json 예시 (X-API-Key 헤더)
 ```
 {
   "mcpServers": {
@@ -22,6 +22,26 @@
   }
 }
 ```
+
+### 대안: Authorization 헤더 사용 (Bearer)
+```
+{
+  "mcpServers": {
+    "todo-server": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer ${API_KEY}"
+      },
+      "env": {
+        "API_KEY": "your-secure-api-key-here"
+      }
+    }
+  }
+}
+```
+
+둘 중 어느 방식이든 동작합니다. 일부 클라이언트는 `Authorization`만 지원하므로 상황에 맞게 선택하세요. 쿼리 파라미터(`?x-api-key=...`)도 지원하지만 헤더 사용을 권장합니다.
 
 ## 환경변수 치환
 - `${API_KEY}` 등 변수는 사용자의 환경에서 자동 치환됨

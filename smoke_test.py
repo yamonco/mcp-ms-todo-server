@@ -4,13 +4,21 @@ Usage:
   API_KEY=test-key TOOL_SCHEMA_DIR=./app/tools python smoke_test.py
 """
 import os
+import os.path
 
-# ensure defaults for local run
+# ensure defaults for local run (DB-only)
 os.environ.setdefault("API_KEY", "test-key")
 os.environ.setdefault("LOG_LEVEL", "DEBUG")
 os.environ.setdefault("TOOL_SCHEMA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "app", "tools")))
+os.environ.setdefault("DB_URL", "sqlite:///./secrets/test.db")
+os.environ.setdefault("DB_AUTO_CREATE", "true")
 
 from fastapi.testclient import TestClient
+
+# Create schema explicitly for tests
+from app.models import Base
+from app.db import ensure_schema
+ensure_schema(Base)
 
 from app.main import app
 
@@ -65,4 +73,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

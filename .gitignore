@@ -1,20 +1,33 @@
 
 # Docusaurus build/cache/output
-!docs/build/
+docs/build/
 docs/.docusaurus/
 docs/node_modules/
 docs/.DS_Store
 !docs/package-lock.json
+docs/docs/tutorial-basics/
+docs/docs/tutorial-extras/
 
 # npm global cache
 node_modules/
+dist/
+build/
+.DS_Store
+*.swp
 
 # MCP server/tool project .gitignore (2025 latest)
 
 # Secrets/Environment settings
 secrets/*
 .env
+.env.*
 token.json
+.venv/
+.python-version
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Docker/Compose/Logs
 *.pid

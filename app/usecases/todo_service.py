@@ -30,9 +30,9 @@ class TodoService:
         return {"error": f"unsupported lists.action: {action}"}
 
     # Tasks
-    def list_tasks(self, list_id: str, *, user: Optional[str] = None) -> Dict[str, Any]:
+    def list_tasks(self, list_id: str, *, user: Optional[str] = None, top: Optional[int] = None, filter_expr: Optional[str] = None) -> Dict[str, Any]:
         # 'user' is reserved for future filtering
-        return self.repo.list_tasks(list_id)
+        return self.repo.list_tasks(list_id, filter_expr=filter_expr, top=top)
 
     def create_task(
         self,

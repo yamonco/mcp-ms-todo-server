@@ -2,16 +2,14 @@
 sidebar_position: 3
 ---
 
-# API Reference
+# API Reference (2025 DB-first)
 
-## Endpoints
-- `/mcp` (POST): Main JSON-RPC endpoint
+## JSON-RPC Endpoint
+- `POST /mcp`
+  - `tools/list`: Returns available tools (filtered by API key role/allowed_tools)
+  - `tools/call`: Executes a tool with validated arguments
 
-## Tool Methods
-- `tools/list`: Returns available tools
-- `tools/call`: Executes a tool with arguments
-
-## Example Request
+### Example (tools/call)
 ```json
 {
   "method": "tools/call",
@@ -20,26 +18,40 @@ sidebar_position: 3
     "arguments": {
       "list_id": "<LIST_ID>",
       "title": "Prepare meeting",
-      "body": "Agenda summary",
-      "due": "2025-09-05T09:00:00",
+      "body": "Agenda",
+      "due": "2025-12-01T09:00:00",
       "time_zone": "Asia/Seoul"
     }
   }
 }
 ```
 
-## Supported Tools
-- `todo.lists.get`: Get list of lists
-- `todo.lists.mutate`: Create/Delete/Rename list
-- `todo.tasks.get`: Get list of tasks
-- `todo.tasks.create`: Create task
-- `todo.tasks.delete`: Delete task
-- `todo.tasks.patch`: Update/complete/reopen/snooze task
-- `todo.sync.delta`: Sync/change detection
+## Supported Tools (summary)
+- `todo.lists.get`, `todo.lists.mutate`
+- `todo.tasks.get`, `todo.tasks.create`, `todo.tasks.delete`, `todo.tasks.patch`
+- `todo.tasks.lite_*`, `todo.sync.*` (if enabled)
 
----
+Tool schemas are discoverable via `tools/list` (name + inputSchema provided).
 
-# Authentication Tools
-- `auth.start_device_code`: Start device code flow
-- `auth.status`: Check device code flow status
-- `auth.logout`: Logout
+## Admin Endpoints
+- `GET /admin/api-keys`: List API keys
+- `POST /admin/api-keys`: Create API key (template, role, token_profile/token_id, etc.)
+- `PATCH /admin/api-keys/{key}`: Update key meta
+- `DELETE /admin/api-keys/{key}`: Delete key
+
+- `GET /admin/tokens`: List DB token profiles (summary)
+- `GET /admin/tokens/by-profile/{profile}`: Read token (includes raw if present)
+- `POST /admin/tokens`: Upsert token/meta for a profile
+
+- `GET /admin/rbac/roles`: List RBAC roles
+- `PUT /admin/rbac/roles/{name}`: Upsert role tools
+- `DELETE /admin/rbac/roles/{name}`: Delete role
+
+- `GET /admin/auth/status`: DB token presence summary
+- `GET /metrics`: Prometheus metrics
+
+Auth: Provide master key via `X-API-Key` for admin endpoints.
+
+## Authentication Model (DB-only)
+- No device-code flow. Tokens are provisioned/imported into DB `tokens` table.
+- API keys reference tokens via `token_id` or `token_profile`.
