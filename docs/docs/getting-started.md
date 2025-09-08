@@ -5,13 +5,13 @@ sidebar_position: 2
 # Getting Started (Make + CLI)
 
 ## Prerequisites
-- Docker (recommended) or local Python (uv/uvicorn)
+- Docker (recommended) or local Python (uvicorn)
 - SQLite (default) or external DB for `DB_URL`
 
 ## Quick Setup
 ```bash
 cp .env.example .env
-make db-up                 # Alembic migrations
+# Schema is auto-created on server start; no migration step
 make app-register PROFILE=admin   # Register/reuse app via Graph, save meta to DB
 
 # Import a user's token JSON into DB (replace with real values)
@@ -31,5 +31,5 @@ make onboard-user USER=alice NAME="Alice" FROM_FILE=./secrets/alice.json
 ```
 
 ## Call Tools
-- List tools: `make mcp-tools API_KEY=<user_api_key>`
-- Call tool: `make mcp-call API_KEY=<user_api_key> METHOD=tools/call PARAMS='{"name":"todo.lists.get","arguments":{}}'`
+- List tools: `make mcp-tools USER_API_KEY=<user_api_key>`
+- Call tool: `make mcp-call USER_API_KEY=<user_api_key> METHOD=tools/call PARAMS='{"name":"todo.lists.get","arguments":{}}'`

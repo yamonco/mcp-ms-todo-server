@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass
+# moved to auth_helper/vendor
 
 
 @dataclass
@@ -8,7 +9,8 @@ class Settings:
     # Server (Admin API)
     mcp_url: str
     api_key: str
-    token_profile: str
+    token_profile: str  # for user token ops (backward compatible)
+    app_profile: str    # admin/app profile for app meta
 
     # App meta
     tenant_id: str
@@ -28,8 +30,10 @@ class Settings:
     @staticmethod
     def load() -> "Settings":
         mcp_url = (os.getenv("MCP_URL") or "http://localhost:8081").rstrip("/")
-        api_key = os.getenv("API_KEY", "")
+        # Admin key: prefer ADMIN_API_KEY; fallback to API_KEY for backward compatibility
+        api_key = os.getenv("ADMIN_API_KEY", "") or os.getenv("API_KEY", "")
         token_profile = os.getenv("TOKEN_PROFILE") or os.getenv("USER") or "default"
+        app_profile = os.getenv("APP_PROFILE") or os.getenv("ADMIN_PROFILE") or os.getenv("TOKEN_PROFILE") or "admin"
 
         tenant_id = os.getenv("TENANT_ID", "organizations")
         client_id = os.getenv("CLIENT_ID", "")
@@ -48,6 +52,7 @@ class Settings:
             mcp_url=mcp_url,
             api_key=api_key,
             token_profile=token_profile,
+            app_profile=app_profile,
             tenant_id=tenant_id,
             client_id=client_id,
             scopes=scopes,
@@ -58,4 +63,3 @@ class Settings:
             admin_client_id=admin_client_id,
             admin_client_secret=admin_client_secret,
         )
-

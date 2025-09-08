@@ -22,7 +22,7 @@ sidebar_position: 3
 ## 관리자 엔드포인트
 - 키: `GET/POST/PATCH/DELETE /admin/api-keys`
 - 토큰: `GET /admin/tokens`, `GET /admin/tokens/by-profile/{profile}`, `POST /admin/tokens`
-- 역할: `GET/PUT/DELETE /admin/rbac/roles`
+  (역할/RBAC 제거: 사용자 키별 allowed_tools만 사용)
 - 상태: `GET /admin/auth/status`
 - 메트릭: `GET /metrics`
 
@@ -31,4 +31,3 @@ sidebar_position: 3
 ## 인증 모델 (DB 전용)
 - 디바이스 코드 제거. 토큰은 DB `tokens` 테이블에 임포트/업서트됩니다.
 - API 키는 `token_id` 또는 `token_profile`로 토큰을 참조합니다.
-

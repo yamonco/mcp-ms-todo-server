@@ -7,12 +7,18 @@ if [ -f "$DIR/.env" ]; then
   source "$DIR/.env"
 fi
 
-MCP_URL=${MCP_URL:-http://localhost:8081}
-API_KEY=${API_KEY:-}
+# MCP_URL은 .env에서 읽지 않고 PORT만 사용
+PORT=${PORT:-8081}
+MCP_URL="http://localhost:${PORT}"
+ADMIN_API_KEY=${ADMIN_API_KEY:-}
+USER_API_KEY=${USER_API_KEY:-}
 
 echo "[info] MCP_URL=$MCP_URL"
-if [ -z "$API_KEY" ]; then
-  echo "[warn] API_KEY is empty; endpoints requiring key may fail"
+if [ -z "$ADMIN_API_KEY" ]; then
+  echo "[warn] ADMIN_API_KEY is empty; admin endpoints may fail"
+fi
+if [ -z "$USER_API_KEY" ]; then
+  echo "[warn] USER_API_KEY is empty; MCP calls may fail (dev-open only)"
 fi
 
 curl_json() {
@@ -24,16 +30,16 @@ curl_json() {
 echo "[1] GET /health"
 curl_json "/health"
 
-echo "[2] GET /mcp/manifest (with key if provided)"
-if [ -n "$API_KEY" ]; then
-  curl -sS "$MCP_URL/mcp/manifest" -H "x-api-key: $API_KEY" | jq .
+echo "[2] GET /mcp/manifest (with user key if provided)"
+if [ -n "$USER_API_KEY" ]; then
+  curl -sS "$MCP_URL/mcp/manifest" -H "x-api-key: $USER_API_KEY" | jq .
 else
   curl -sS "$MCP_URL/mcp/manifest" | jq .
 fi
 
 echo "[3] POST /mcp initialize"
 INIT_PAY='{ "jsonrpc": "2.0", "id": 1, "method": "initialize" }'
-if [ -n "$API_KEY" ]; then AUTH=(-H "x-api-key: $API_KEY"); else AUTH=(); fi
+if [ -n "$USER_API_KEY" ]; then AUTH=(-H "x-api-key: $USER_API_KEY"); else AUTH=(); fi
 INIT_RES=$(curl -sS "$MCP_URL/mcp" -H 'content-type: application/json' "${AUTH[@]}" -d "$INIT_PAY")
 echo "$INIT_RES" | jq .
 

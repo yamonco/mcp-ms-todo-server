@@ -2,8 +2,13 @@ from __future__ import annotations
 import time
 import requests
 from typing import Optional, Dict, Any
+try:
 from .config import Settings
 from . import dbsync
+# moved to auth_helper/vendor
+except Exception:  # pragma: no cover
+    from config import Settings  # type: ignore
+    import dbsync  # type: ignore
 
 
 def is_token_valid(access_token: str) -> bool:
@@ -31,7 +36,7 @@ def _refresh_with_refresh_token(cfg: Settings, token: Dict[str, Any]) -> Optiona
     try:
         resp = requests.post(url, data=data, timeout=15)
         if resp.status_code != 200:
-        print(f"[REFRESH] Failed {resp.status_code}: {resp.text[:200]}")
+            print(f"[REFRESH] Failed {resp.status_code}: {resp.text[:200]}")
             return None
         res = resp.json()
         if "expires_in" in res and "expires_on" not in res:

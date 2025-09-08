@@ -14,7 +14,7 @@ make dev-serve         # dev
 make prod-up           # prod (compose direct)
 ```
 
-Ensure `.env` has `API_KEY`, `DB_URL`, `ADMIN_*` configured. For prod, front with a reverse proxy and persistent volumes for DB.
+Ensure `.env` has `ADMIN_API_KEY`, `DB_URL`, `ADMIN_*` configured. For prod, front with a reverse proxy and persistent volumes for DB.
 
 ## Environment
 - API key is required for admin endpoints (`X-API-Key`).

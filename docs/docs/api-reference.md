@@ -43,14 +43,12 @@ Tool schemas are discoverable via `tools/list` (name + inputSchema provided).
 - `GET /admin/tokens/by-profile/{profile}`: Read token (includes raw if present)
 - `POST /admin/tokens`: Upsert token/meta for a profile
 
-- `GET /admin/rbac/roles`: List RBAC roles
-- `PUT /admin/rbac/roles/{name}`: Upsert role tools
-- `DELETE /admin/rbac/roles/{name}`: Delete role
+  (RBAC removed; per-user allowed_tools only)
 
 - `GET /admin/auth/status`: DB token presence summary
 - `GET /metrics`: Prometheus metrics
 
-Auth: Provide master key via `X-API-Key` for admin endpoints.
+Auth: Provide master key via `X-API-Key` (use `ADMIN_API_KEY`) for admin endpoints. Use per-user API keys for MCP `/mcp` calls.
 
 ## Authentication Model (DB-only)
 - No device-code flow. Tokens are provisioned/imported into DB `tokens` table.

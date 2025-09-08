@@ -30,7 +30,8 @@ class Config:
     protocol_revision: str = os.getenv("MCP_PROTOCOL_REV", "2025-06-18")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     port: int = int(os.getenv("PORT", "8081"))
-    api_key: str | None = os.getenv("API_KEY")
+    # Admin(master) API key: prefer ADMIN_API_KEY; fallback to API_KEY (deprecated)
+    api_key: str | None = os.getenv("ADMIN_API_KEY") or os.getenv("API_KEY")
 
     # cors
     allow_origins: List[str] = field(default_factory=lambda: _get_env_list("ALLOW_ORIGINS", []))

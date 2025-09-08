@@ -9,9 +9,7 @@ sidebar_position: 8
 ## RBAC(역할/권한)
 - 역할 저장소: DB 테이블 `roles`
 - 역할 엔드포인트(관리자 키 필요):
-  - `GET /admin/rbac/roles`
-  - `PUT /admin/rbac/roles/{name}` — `{ "tools": ["todo.lists.get", ...] }`
-  - `DELETE /admin/rbac/roles/{name}`
+  (RBAC 제거됨)
 - API 키 메타의 `role`에 역할명을 지정하면, 서버는 역할의 툴 목록을 우선 적용합니다(키의 개별 allowed_tools보다 우선). 역할을 사용하면 대규모 사용자에 대한 권한 변경이 쉬워집니다.
 
 ## API 키 수명주기 & 회전
@@ -38,7 +36,7 @@ sidebar_position: 8
 - 헬퍼의 `refresh`는 refresh_token 존재가 전제입니다. 조직 정책상 주기적 재동의가 필요하면 새 토큰 JSON을 위 절차로 재반영하세요.
 
 ## 보안 권장사항
-- `API_KEY`는 마스터 권한이므로 비밀로 보관, 회전 주기 운영
+- `ADMIN_API_KEY`는 마스터 권한이므로 비밀로 보관, 주기적 회전
 - DB 백업/암호화 적용, 접근 제어(네트워크/WAF)
 - 관리자 앱(ADMIN_CLIENT_SECRET)도 주기적으로 갱신, 최소 권한 원칙 준수
 
@@ -46,4 +44,3 @@ sidebar_position: 8
 - `/health`: 상태 점검(헬스체크)
 - `/metrics`: Prometheus 형식 지표 수집
 - 에러 로깅/레벨은 `LOG_LEVEL`로 제어
-

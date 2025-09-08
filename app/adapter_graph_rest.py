@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Callable, Iterator, Literal, List
 
 import httpx
+import logging
 from app.config import cfg
 
 GRAPH = cfg.graph_base_url
@@ -81,6 +82,8 @@ class _CircuitBreaker:
 _rate_limiter = _RateLimiter(rate_per_sec=cfg.rate_per_sec, burst=cfg.rate_burst)
 _circuit = _CircuitBreaker(fail_threshold=cfg.cb_fails, cooldown_sec=cfg.cb_cooldown_sec)
 _HTTPX = httpx.Client(timeout=cfg.http_timeout)
+_HTTP_LOG = os.getenv("HTTP_LOG", "").strip().lower() in {"1", "true", "yes", "on", "debug"}
+_http_logger = logging.getLogger("http")
 
 # -----------------------------
 # Simple Facade helpers (kept minimal)
@@ -124,6 +127,8 @@ def _request(method: Callable, url: str, token: str, *, max_retries: Optional[in
 
     for attempt in range(retries + 1):
         try:
+            if _HTTP_LOG:
+                _http_logger.debug(f"http.request method={getattr(method, '__name__', 'call')} url={url} attempt={attempt}")
             r = method(_HTTPX, url, headers=headers, **kwargs)
         except Exception as e:
             _circuit.record(False)
@@ -131,6 +136,8 @@ def _request(method: Callable, url: str, token: str, *, max_retries: Optional[in
 
         if r.status_code < 400:
             _circuit.record(True)
+            if _HTTP_LOG:
+                _http_logger.debug(f"http.response url={url} status={r.status_code} len={len(r.content) if r.content else 0}")
             return r.json() if r.content else {}
 
         try:
@@ -143,11 +150,15 @@ def _request(method: Callable, url: str, token: str, *, max_retries: Optional[in
         if r.status_code in (429, 500, 502, 503, 504) and attempt < retries:
             ra = r.headers.get("Retry-After")
             wait = _parse_retry_after(ra) if ra else backoff
+            if _HTTP_LOG:
+                _http_logger.warning(f"http.retry url={url} status={r.status_code} wait={wait:.2f}s attempt={attempt}")
             time.sleep(max(0.0, wait))
             backoff *= backoff_factor
             continue
 
         _circuit.record(False)
+        if _HTTP_LOG:
+            _http_logger.error(f"http.error url={url} status={r.status_code} code={code} msg={(msg or '')[:120]}")
         raise GraphAPIError(r.status_code, code, (msg or "")[:120])
 
 # -----------------------------

@@ -5,12 +5,14 @@ Usage examples:
   Python runs (venv):
     echo '{"access_token":"...","refresh_token":"..."}' | python -m app.cli profiles import --profile alice --from-stdin
     python -m app.cli users list
-    python -m app.cli users delete --key <API_KEY>
+    python -m app.cli users delete --key <ADMIN_API_KEY>
 Environment:
-  MCP_URL (default: http://localhost:${PORT or 8081})
-  API_KEY  (master key for admin)
+    PORT (default: 8081)
+  ADMIN_API_KEY  (master key for admin)
 """
 import os
+
+import importlib.util
 import sys
 import json
 import argparse
@@ -19,32 +21,37 @@ import time
 
 
 def _base_url() -> str:
-    url = os.getenv("MCP_URL")
-    if url:
-        return url.rstrip("/")
     port = os.getenv("PORT", "8081")
     return f"http://localhost:{port}"
 
 
 def _master_headers() -> dict:
-    key = os.getenv("API_KEY")
+    key = os.getenv("ADMIN_API_KEY") or os.getenv("API_KEY")
     if not key:
         # fallback: read from .env in cwd
         try:
             with open(".env", "r", encoding="utf-8") as f:
                 for line in f:
-                    if line.strip().startswith("API_KEY="):
+                    if line.strip().startswith("ADMIN_API_KEY="):
                         key = line.strip().split("=", 1)[1]
+                        break
+                    if not key and line.strip().startswith("API_KEY="):
+                        key = line.strip().split("=", 1)[1]  # deprecated fallback
                         break
         except Exception:
             pass
     if not key:
-        print("API_KEY not found. Set env or add API_KEY=... in .env", file=sys.stderr)
+        print("ADMIN_API_KEY not found. Set env or add ADMIN_API_KEY=... in .env (API_KEY deprecated)", file=sys.stderr)
         sys.exit(2)
     return {"x-api-key": key, "content-type": "application/json"}
 
 
 def cmd_users_add(args: argparse.Namespace) -> None:
+    # Ensure server is up (short wait)
+    try:
+        _wait_for_server(timeout=10.0)
+    except SystemExit:
+        pass
     url = _base_url() + "/admin/users"
     payload = {
         "template": args.template,
@@ -54,11 +61,44 @@ def cmd_users_add(args: argparse.Namespace) -> None:
         "name": args.name,
         "token_profile": args.token_profile,
         "token_id": args.token_id,
+        "app_id": getattr(args, "app_id", None),
+        "app_profile": getattr(args, "app_profile", None),
+        "groups": getattr(args, "groups", None),
     }
+    print("\n[안내] 이 유저로 Microsoft Graph 연동을 사용하려면 인증이 필요합니다.\n", flush=True)
+    import sys
+    sys.stdout.flush()
     with httpx.Client(timeout=20) as c:
         r = c.post(url, headers=_master_headers(), json=payload)
         r.raise_for_status()
         print(json.dumps(r.json(), ensure_ascii=False, indent=2))
+
+    # --- 개선: 유저 device code flow 직접 실행 및 토큰 자동 저장 ---
+    try:
+        import importlib
+        helper_dir = os.path.join(os.path.dirname(__file__), "../auth_helper")
+        sys.path.insert(0, os.path.abspath(helper_dir))
+        graph = importlib.import_module("graph")
+        # 앱 메타 정보 확보
+        from app.apps import get_app_by_profile
+        app_meta = get_app_by_profile(args.app_profile or "admin") or {}
+        tenant = app_meta.get("tenant_id") or os.getenv("TENANT_ID") or "organizations"
+        client_id = app_meta.get("client_id") or os.getenv("CLIENT_ID") or ""
+        scopes = app_meta.get("scopes") or os.getenv("SCOPES") or "offline_access Tasks.ReadWrite"
+        if not client_id:
+            raise RuntimeError("CLIENT_ID missing: set admin app in DB or set CLIENT_ID in env")
+        # device code flow 실행
+        token = graph.get_user_device_code_token(tenant, client_id, scopes)
+        # 토큰 DB 저장
+        print("[안내] 인증 토큰을 DB에 저장합니다...", flush=True)
+        config = importlib.import_module("config")
+        tokens = importlib.import_module("tokens")
+        cfg = config.Settings.load()
+        cfg.token_profile = args.token_profile or args.user_id
+        tokens.save_token(cfg, token)
+        print("[완료] 인증 및 토큰 저장이 완료되었습니다.", flush=True)
+    except Exception as e:
+        print(f"[경고] 인증 자동화 실패: {e}\n(직접 인증하려면: python -m auth_helper.cli login --interactive --profile {args.token_profile or args.user_id})", flush=True)
 
 
 def cmd_users_list(args: argparse.Namespace) -> None:
@@ -79,6 +119,8 @@ def cmd_users_update(args: argparse.Namespace) -> None:
         "name": args.name,
         "token_profile": args.token_profile,
         "token_id": args.token_id,
+        "app_id": getattr(args, "app_id", None),
+        "groups": getattr(args, "groups", None),
     }
     # Drop None values to keep patch minimal
     payload = {k: v for k, v in payload.items() if v is not None}
@@ -129,10 +171,13 @@ def cmd_users_onboard(args: argparse.Namespace) -> None:
     token_id = args.token_id
     if token_id is None:
         raw = args.token
+        if getattr(args, "from_file", None):
+            with open(args.from_file, "r", encoding="utf-8") as f:
+                raw = f.read()
         if args.from_stdin:
             raw = sys.stdin.read()
         if not raw:
-            raise SystemExit("Provide --token '<JSON>' or --from-stdin, or use --token-id")
+            raise SystemExit("Provide --token '<JSON>' or --from-file/--from-stdin, or use --token-id")
         try:
             token = json.loads(raw)
         except Exception as e:
@@ -152,11 +197,16 @@ def cmd_users_onboard(args: argparse.Namespace) -> None:
         name=name,
         token_profile=token_profile,
         token_id=token_id,
+        app_id=getattr(args, "app_id", None),
+        app_profile=getattr(args, "app_profile", None),
     )
     cmd_users_add(payload)
     
 
 def main(argv: list[str] | None = None) -> int:
+    # Templates are now logical presets managed server-side
+    template_choices = ["lite", "all", "custom"]
+
     p = argparse.ArgumentParser(prog="mcp-cli", description="MCP Server CLI")
     sub = p.add_subparsers(dest="cmd")
 
@@ -166,11 +216,14 @@ def main(argv: list[str] | None = None) -> int:
     p_add = sub_users.add_parser("add", help="Add user and generate API key")
     p_add.add_argument("--user-id", required=True)
     p_add.add_argument("--name", required=False)
-    p_add.add_argument("--template", required=True, choices=["lite", "default", "custom"])
+    p_add.add_argument("--template", required=True, choices=template_choices)
     p_add.add_argument("--allowed-tools", nargs="*", default=None, help="Only for custom template")
     p_add.add_argument("--token-profile", required=False, help="DB token profile name")
     p_add.add_argument("--token-id", required=False, type=int, help="DB token id (preferred)")
+    p_add.add_argument("--app-id", required=False, type=int, help="Associate API key with an app (apps.id)")
+    p_add.add_argument("--app-profile", required=False, help="Associate API key via apps.profile")
     p_add.add_argument("--note", required=False)
+    p_add.add_argument("--groups", nargs="*", default=None)
     p_add.set_defaults(func=cmd_users_add)
 
     p_list = sub_users.add_parser("list", help="List users")
@@ -182,24 +235,28 @@ def main(argv: list[str] | None = None) -> int:
 
     p_upd = sub_users.add_parser("update", help="Update user meta by API key")
     p_upd.add_argument("--key", required=True)
-    p_upd.add_argument("--template", choices=["lite", "default", "custom"], required=False)
+    p_upd.add_argument("--template", choices=template_choices, required=False)
     p_upd.add_argument("--allowed-tools", nargs="*", default=None)
     p_upd.add_argument("--note", required=False)
     p_upd.add_argument("--user-id", required=False)
     p_upd.add_argument("--name", required=False)
     p_upd.add_argument("--token-profile", required=False)
     p_upd.add_argument("--token-id", required=False, type=int)
+    p_upd.add_argument("--app-id", required=False, type=int)
     p_upd.set_defaults(func=cmd_users_update)
 
     p_on = sub_users.add_parser("onboard", help="Import token JSON (arg/stdin) → add user")
     p_on.add_argument("--user-id", required=True)
     p_on.add_argument("--name", required=False)
-    p_on.add_argument("--template", required=False, choices=["lite", "default", "custom"], help="Default from USER_TEMPLATE_DEFAULT or 'lite'")
+    p_on.add_argument("--template", required=False, choices=template_choices, help="Default from USER_TEMPLATE_DEFAULT or 'lite'")
     p_on.add_argument("--allowed-tools", nargs="*", default=None)
     p_on.add_argument("--token-profile", required=False, help="DB token profile name; default = user-id")
     p_on.add_argument("--token", required=False, help="Raw token JSON string (use --token-id to skip)")
+    p_on.add_argument("--from-file", required=False, help="Read raw token JSON from file path")
     p_on.add_argument("--from-stdin", action="store_true", help="Read raw token JSON from stdin")
     p_on.add_argument("--token-id", required=False, type=int, help="DB token id to attach (skips import)")
+    p_on.add_argument("--app-id", required=False, type=int)
+    p_on.add_argument("--app-profile", required=False)
     p_on.add_argument("--note", required=False)
     # Helper flow removed
     p_on.set_defaults(func=cmd_users_onboard)
@@ -211,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     p_imp = sub_prof.add_parser("import", help="Import raw token JSON into a DB profile")
     p_imp.add_argument("--profile", required=True)
     p_imp.add_argument("--token", required=False, help="Raw token JSON string")
+    p_imp.add_argument("--from-file", required=False, help="Read raw token JSON from file path")
     p_imp.add_argument("--from-stdin", action="store_true", help="Read raw token JSON from stdin")
     p_imp.set_defaults(func=cmd_profiles_import)
 
@@ -227,21 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     p_login.add_argument("--from-stdin", action="store_true", help="Read raw token JSON from stdin")
     p_login.set_defaults(func=cmd_auth_login_import)
 
-    # RBAC roles
-    g_roles = sub.add_parser("roles", help="Manage RBAC roles")
-    sub_roles = g_roles.add_subparsers(dest="action")
-
-    p_rl = sub_roles.add_parser("list", help="List roles")
-    p_rl.set_defaults(func=cmd_roles_list)
-
-    p_rp = sub_roles.add_parser("put", help="Create/Update a role")
-    p_rp.add_argument("--name", required=True)
-    p_rp.add_argument("--tools", nargs="+", required=True)
-    p_rp.set_defaults(func=cmd_roles_put)
-
-    p_rd = sub_roles.add_parser("delete", help="Delete a role")
-    p_rd.add_argument("--name", required=True)
-    p_rd.set_defaults(func=cmd_roles_delete)
+    # RBAC CLI removed (Casbin-based policies managed via admin policy APIs)
 
     args = p.parse_args(argv)
     if not getattr(args, "func", None):
@@ -273,17 +317,20 @@ def _wait_for_server(timeout: float = 30.0, interval: float = 0.5) -> None:
         except Exception as e:
             last_err = str(e)
         time.sleep(interval)
-    hint = "힌트: dev에서는 별도 터미널에서 'make dev-serve'로 서버를 먼저 띄워주세요. prod는 'make prod-up' 후 MCP_URL 지정."
+    hint = "힌트: dev에서는 별도 터미널에서 'make dev-serve'로 서버를 먼저 띄워주세요. prod는 'make prod-up' 후 PORT 지정."
     raise SystemExit(f"Server not ready at {url}: {last_err}. {hint}")
 
 def cmd_profiles_import(args: argparse.Namespace) -> None:
     import json
     prof = args.profile
     raw = args.token
+    if getattr(args, "from_file", None):
+        with open(args.from_file, "r", encoding="utf-8") as f:
+            raw = f.read()
     if args.from_stdin:
         raw = sys.stdin.read()
     if not raw:
-        raise SystemExit("Provide --token '<JSON>' or --from-stdin")
+        raise SystemExit("Provide --token '<JSON>' or --from-file or --from-stdin")
     try:
         token = json.loads(raw)
     except Exception as e:
@@ -326,17 +373,7 @@ def _admin_delete(path: str) -> dict:
         return r.json()
 
 
-def cmd_roles_list(args: argparse.Namespace) -> None:
-    print(json.dumps(_admin_get("/admin/rbac/roles"), ensure_ascii=False, indent=2))
-
-
-def cmd_roles_put(args: argparse.Namespace) -> None:
-    body = {"tools": args.tools}
-    print(json.dumps(_admin_put(f"/admin/rbac/roles/{args.name}", body), ensure_ascii=False, indent=2))
-
-
-def cmd_roles_delete(args: argparse.Namespace) -> None:
-    print(json.dumps(_admin_delete(f"/admin/rbac/roles/{args.name}"), ensure_ascii=False, indent=2))
+# RBAC removed
 
 
 def _run(cmd: list[str]) -> None:

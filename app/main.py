@@ -19,17 +19,29 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.tools import _list_tools, _call_tool
 from app.apikeys import (
-    generate_api_key,
     list_keys as apikey_list,
-    delete_key as apikey_delete,
     resolve_key,
-    list_users as apikey_users,
-    update_key as apikey_update,
 )
-from app import rbac
-from app.tokens import list_tokens as token_list, upsert_token as token_upsert, get_token_by_profile
+from app.tokens import list_tokens as token_list
 from app.context import set_current_user_meta
 from app.config import cfg
+from app import policy as policy_mod
+from app.api.routers.admin import router as admin_router
+from app.api.security import (
+    dep_require_user_api_key,
+    dep_require_api_key,
+)
+from fastapi import Depends
+from app.schemas.mcp import ManifestResponse, JsonRpcEnvelope
+from app.schemas.admin import (
+    CreateKeyPayload,
+    UpdateKeyPayload,
+    UpsertTokenPayload,
+    UpsertAppPayload,
+    GroupPayload,
+    CasbinRulePayload,
+)
+from app.repositories import casbin_policies as casbin_repo
 
 
  # Logging setup
@@ -85,6 +97,9 @@ def _jsonrpc_err(id_val: Any, code: int, message: str, *, headers: Optional[Dict
 
 
 app = FastAPI(title=cfg.server_name, version=cfg.server_version)
+app.include_router(admin_router, prefix="/admin")
+
+# 템플릿 와처 제거(간소화)
 try:
     # 개발 편의: DB_URL 미지정 시 SQLite 기본값으로 폴백
     if not cfg.db_url:
@@ -96,18 +111,19 @@ try:
     from app.models import Base
     from app.db import ensure_schema
     ensure_schema(Base)
+    # Seed defaults (groups, etc.)
+    try:
+        from app.bootstrap import seed_defaults as _seed_defaults
+        _seed_defaults()
+    except Exception:
+        pass
 except Exception:
     pass
-@app.get("/mcp/manifest")
-def mcp_manifest(x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None), request: Request = None):
+@app.get("/mcp/manifest", response_model=ManifestResponse)
+def mcp_manifest(auth=Depends(dep_require_user_api_key)):
     """
     MCP 툴 선언 manifest를 JSON으로 반환 (Cursor 등에서 자동 임포트 가능)
     """
-    # 베스트 에포트로 키를 확인해 컨텍스트를 세팅(실패해도 전체 노출)
-    try:
-        require_api_key(request, x_api_key, authorization)
-    except HTTPException:
-        pass
     tools, _ = _list_tools(None)
     return {"tools": tools}
 
@@ -294,18 +310,15 @@ def _get_provided_key(request: Request, x_api_key: Optional[str], authorization:
 
 def require_api_key(request: Request, x_api_key: Optional[str], authorization: Optional[str]):
     provided = _get_provided_key(request, x_api_key, authorization)
-    # Master key short-circuit
     if EXPECTED_API_KEY and provided == EXPECTED_API_KEY:
         _inc("mcp_auth_total", outcome="success", kind="master")
         set_current_user_meta({"master": True})
         return
-    # Generated key path
     ok, meta = resolve_key(provided)
     if ok:
         _inc("mcp_auth_total", outcome="success", kind="key")
         set_current_user_meta(meta or None)
         return
-    # If neither master nor generated keys are configured, allow open (dev mode)
     has_any_keys = bool(EXPECTED_API_KEY) or bool(apikey_list())
     if not has_any_keys:
         _inc("mcp_auth_total", outcome="success", kind="open")
@@ -314,24 +327,25 @@ def require_api_key(request: Request, x_api_key: Optional[str], authorization: O
     _inc("mcp_auth_total", outcome="failure")
     raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
-
-def _allowed_tools_for_request(request: Request, x_api_key: Optional[str], authorization: Optional[str]) -> Optional[set[str]]:
+def require_user_api_key(request: Request, x_api_key: Optional[str], authorization: Optional[str]):
+    """Require a generated user API key (not master) and set user meta.
+    In dev-open mode (no keys configured), allow open access.
+    """
     provided = _get_provided_key(request, x_api_key, authorization)
-    # Master key → all tools
+    # Reject master for MCP operations
     if EXPECTED_API_KEY and provided == EXPECTED_API_KEY:
-        return None
+        raise HTTPException(status_code=401, detail="User API key required for MCP (do not use ADMIN_API_KEY)")
     ok, meta = resolve_key(provided)
-    if not ok:
-        # No keys configured → open; else None means all, here return None only if no keys configured
-        has_any_keys = bool(EXPECTED_API_KEY) or bool(apikey_list())
-        return None if not has_any_keys else set()
-    names = set((meta or {}).get("allowed_tools", []) or [])
-    return names
+    if ok:
+        _inc("mcp_auth_total", outcome="success", kind="key")
+        set_current_user_meta(meta or None)
+        return
+    _inc("mcp_auth_total", outcome="failure")
+    raise HTTPException(status_code=401, detail="Invalid or missing User API key")
 
 
 @app.get("/health")
-def health(request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    require_api_key(request, x_api_key, authorization)
+def health(auth=Depends(dep_require_api_key)):
     return {
         "status": "ok",
         "server": CAPABILITIES["server"],
@@ -348,10 +362,8 @@ def mcp_capabilities():
 
 
 
-@app.post("/mcp")
-async def mcp_entry(request: Request, x_api_key: str = Header(None), authorization: str = Header(None)):
-    # API Key 인증 (X-API-Key / Authorization: Bearer / query param)
-    require_api_key(request, x_api_key, authorization)
+@app.post("/mcp", response_model=JsonRpcEnvelope)
+async def mcp_entry(request: Request, auth=Depends(dep_require_user_api_key)):
     """
     단일 JSON-RPC 엔드포인트 (SSE/HTTP 자동 분기)
     """
@@ -415,7 +427,7 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None), authorizati
     # SSE 스트리밍 응답 핸들러
     async def sse_stream():
         import asyncio
-        # SSE는 tools/call에서만 사용
+    # SSE는 tools/call에서만 사용
         if method == "tools/call":
             name = params.get("name")
             arguments = params.get("arguments", {})
@@ -481,9 +493,6 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None), authorizati
     if method == "tools/list":
         cursor = params.get("cursor")
         tools, next_cursor = _list_tools(cursor)
-        allowed = _allowed_tools_for_request(request, x_api_key, authorization)
-        if allowed is not None:
-            tools = [t for t in tools if t.get("name") in allowed]
         result = {"tools": tools}
         if next_cursor is not None:
             result["nextCursor"] = next_cursor
@@ -509,11 +518,7 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None), authorizati
             _inc("mcp_requests_total", method="tools/call", tool=name or "", status="invalid_params")
             _observe_hist("mcp_http_request_duration_ms", int((time.time() - t0) * 1000), endpoint="tools/call", status="invalid_params", tool=name or "")
             return _jsonrpc_err(req.id, -32602, "Invalid params", headers={"x-correlation-id": correlation_id})
-        allowed = _allowed_tools_for_request(request, x_api_key, authorization)
-        if allowed is not None and name not in allowed:
-            _inc("mcp_requests_total", method="tools/call", tool=name, status="forbidden")
-            _observe_hist("mcp_http_request_duration_ms", int((time.time() - t0) * 1000), endpoint="tools/call", status="forbidden", tool=name)
-            return _jsonrpc_err(req.id, -32601, "Tool not allowed for this API key", headers={"x-correlation-id": correlation_id})
+        # Allowed tool filtering is centralized in app.tools using user meta
         try:
             result = _call_tool(name, arguments)
             dt = int((time.time() - t0) * 1000)
@@ -549,15 +554,6 @@ async def mcp_entry(request: Request, x_api_key: str = Header(None), authorizati
 # ---------------------------------------------------------------------
 # Admin: API key management (master key only)
 # ---------------------------------------------------------------------
-class CreateKeyPayload(BaseModel):
-    template: str
-    allowed_tools: Optional[list[str]] = None
-    note: Optional[str] = None
-    user_id: Optional[str] = None
-    name: Optional[str] = None
-    token_profile: Optional[str] = None
-    token_id: Optional[int] = None
-    role: Optional[str] = None
 
 
 def _require_master(request: Request, x_api_key: Optional[str], authorization: Optional[str]):
@@ -574,144 +570,33 @@ def _require_master(request: Request, x_api_key: Optional[str], authorization: O
     raise HTTPException(status_code=403, detail="Master API key required")
 
 
-@app.post("/admin/api-keys")
-def create_api_key(payload: CreateKeyPayload, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    key, meta = generate_api_key(
-        payload.template,
-        allowed_tools=payload.allowed_tools,
-        note=payload.note,
-        user_id=payload.user_id,
-        name=payload.name,
-        token_profile=payload.token_profile,
-        token_id=payload.token_id,
-        role=payload.role,
-    )
-    return {"api_key": key, "meta": meta}
-
-
-@app.get("/admin/api-keys")
-def list_api_keys(request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    return apikey_list()
-
-
-@app.delete("/admin/api-keys/{key}")
-def delete_api_key(key: str, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    ok = apikey_delete(key)
-    if not ok:
-        raise HTTPException(status_code=404, detail="key not found")
-    return {"deleted": True}
-
-
-class UpdateKeyPayload(BaseModel):
-    template: Optional[str] = None
-    allowed_tools: Optional[list[str]] = None
-    note: Optional[str] = None
-    user_id: Optional[str] = None
-    name: Optional[str] = None
-    token_profile: Optional[str] = None
-    token_id: Optional[int] = None
-    role: Optional[str] = None
+ 
 
 
 # Tokens management (admin)
-class UpsertTokenPayload(BaseModel):
-    profile: Optional[str] = None
-    token: Dict[str, Any]
-    tenant_id: Optional[str] = None
-    client_id: Optional[str] = None
-    scopes: Optional[str] = None
 
 
-@app.patch("/admin/api-keys/{key}")
-def update_api_key(key: str, payload: UpdateKeyPayload, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    meta = apikey_update(key, payload.model_dump())
-    if not meta:
-        raise HTTPException(status_code=404, detail="key not found")
-    return {"api_key": key, "meta": meta}
+ 
+
+# Admin: Apps (registered applications)
 
 
-@app.get("/admin/tokens")
-def list_tokens(request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    return token_list()
+ 
 
 
-@app.post("/admin/tokens")
-def upsert_token(payload: UpsertTokenPayload, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    res = token_upsert(
-        profile=payload.profile,
-        token_data=payload.token,
-        tenant_id=payload.tenant_id,
-        client_id=payload.client_id,
-        scopes=payload.scopes,
-    )
-    return res
+ 
 
 
-@app.get("/admin/tokens/by-profile/{profile}")
-def read_token_by_profile(profile: str, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    data = get_token_by_profile(profile)
-    if not data:
-        raise HTTPException(status_code=404, detail="token not found")
-    return data
+# Groups (policy presets)
 
 
-@app.post("/admin/users")
-def create_user(payload: CreateKeyPayload, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    return create_api_key(payload, request, x_api_key, authorization)
-
-
-@app.get("/admin/users")
-def list_users(request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    return apikey_users()
-
-
-# RBAC role management (admin)
-class RolePayload(BaseModel):
-    tools: list[str]
-
-
-@app.get("/admin/rbac/roles")
-def rbac_list(request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    return rbac.list_roles()
-
-
-@app.put("/admin/rbac/roles/{name}")
-def rbac_put(name: str, payload: RolePayload, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    return rbac.upsert_role(name, payload.tools)
-
-
-@app.delete("/admin/rbac/roles/{name}")
-def rbac_del(name: str, request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    ok = rbac.delete_role(name)
-    if not ok:
-        raise HTTPException(status_code=404, detail="role not found")
-    return {"deleted": True}
+ 
 
 
 # ---------------------------------------------------------------------
 # Admin: Auth status (Option B - external refresher)
 # ---------------------------------------------------------------------
-@app.get("/admin/auth/status")
-def auth_status(request: Request, x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
-    _require_master(request, x_api_key, authorization)
-    try:
-        tok = token_list()
-        total = len(tok)
-        has_refresh = sum(1 for v in tok.values() if v.get("has_refresh"))
-        return {"present": total > 0, "db_tokens": total, "with_refresh": has_refresh}
-    except Exception as e:
-        return {"present": False, "error": str(e)}
+ 
 
 
 @app.get("/metrics")
@@ -719,6 +604,11 @@ def metrics():
     # No auth; deploy behind reverse proxy if needed
     txt = _render_metrics()
     return Response(content=txt, media_type="text/plain; version=0.0.4")
+
+# ---------------------------------------------------------------------
+# Admin: Policy (Casbin) reload
+# ---------------------------------------------------------------------
+ 
 
 # ---------------------------------------------------------------------
 # STDIO MCP 모드: stdin에서 JSON-RPC 요청을 읽고 stdout으로 응답을 출력

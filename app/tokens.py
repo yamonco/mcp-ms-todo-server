@@ -42,7 +42,6 @@ def upsert_token(*, profile: Optional[str], token_data: Dict[str, Any], tenant_i
         rec.expires_in = int(expires_in) if isinstance(expires_in, int) else None
         rec.token_type = token_type
         rec.scope = scope
-        rec.raw = token_data
         if tenant_id is not None:
             rec.tenant_id = tenant_id
         if client_id is not None:
@@ -73,5 +72,4 @@ def get_token_by_profile(profile: str) -> Optional[Dict[str, Any]]:
             "tenant_id": t.tenant_id,
             "client_id": t.client_id,
             "scopes": t.scopes,
-            "raw": t.raw,
         }

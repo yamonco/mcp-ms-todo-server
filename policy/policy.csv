@@ -1,0 +1,13 @@
+# Default policies (file mode)
+# Grant all tools to role:all (template 'all')
+p, role:all, *, use
+# Safe subset for role:lite (template 'lite')
+p, role:lite, todo.lists.get, use
+p, role:lite, todo.tasks.lite_list, use
+p, role:lite, todo.tasks.lite_all, use
+p, role:lite, todo.tasks.lite_complete, use
+p, role:lite, todo.tasks.lite_snooze, use
+p, role:lite, todo.sync.delta_lists, use
+p, role:lite, todo.sync.delta_tasks, use
+p, role:lite, todo.sync.walk_delta_lists, use
+p, role:lite, todo.sync.walk_delta_tasks, use

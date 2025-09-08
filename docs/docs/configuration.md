@@ -12,7 +12,7 @@ All settings are environment variables. No JSON token files are used.
 - `MCP_PROTOCOL_REV` (default: 2025-06-18)
 - `PORT` (default: 8081)
 - `LOG_LEVEL` (default: INFO)
-- `API_KEY` (master key; required for admin endpoints)
+- `ADMIN_API_KEY` (master/admin key; required for admin endpoints)
 - `SSE_ENABLED` (default: true)
 - `ALLOW_ORIGINS` (comma separated)
 

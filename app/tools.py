@@ -9,56 +9,95 @@
 
 import os
 import json
+import logging
 from typing import Dict, Any, Callable, Optional, List, Tuple
 from app.container import get_todo_service_for
 from app.config import cfg
 from app.context import get_current_user_meta
-from app import rbac
+from app import policy
 import glob
 from jsonschema import validate, ValidationError
+
+logger = logging.getLogger("tools")
+
 
 def _service():
     meta = get_current_user_meta() or {}
     # DB 기반: token_id 또는 token_profile (프로필명)만 지원
     token_id = meta.get("token_id") if isinstance(meta.get("token_id"), int) else None
     token_profile = meta.get("token_profile") or None
+    if not token_id and not token_profile:
+        # 명확한 에러: MCP 도구 호출에는 사용자 API 키가 필요
+        raise RuntimeError("User API key required: provide a key bound to token_profile/token_id (do not use ADMIN_API_KEY)")
     return get_todo_service_for(token_profile, token_id=token_id)
 
-# 툴 실행 함수 매핑
-TOOL_EXEC_MAP: Dict[str, Callable[[Dict[str, Any]], Any]] = {
+def _explicit_exec(name: str) -> Optional[Callable[[Dict[str, Any]], Any]]:
+    """특수 케이스 전용 매핑(일반 규칙으로 매핑 불가한 것들)"""
+    if name == "todo.lists.mutate":
+        return lambda p: _service().mutate_list(p)
+    if name == "todo.tasks.patch":
+        return lambda p: (
+            _service().update_task(p["list_id"], p["task_id"], p["patch"]) if p.get("mode", "generic") == "generic"
+            else _service().complete_task(p["list_id"], p["task_id"]) if p.get("mode") == "complete"
+            else _service().reopen_task(p["list_id"], p["task_id"]) if p.get("mode") == "reopen"
+            else _service().snooze_task(p["list_id"], p["task_id"], p["remind_at_iso"], p.get("tz", "Asia/Seoul")) if p.get("mode") == "snooze"
+            else {"error": f"unsupported patch mode: {p.get('mode')}"}
+        )
+    return None
+
+
+def _auto_exec(name: str) -> Optional[Callable[[Dict[str, Any]], Any]]:
+    """컨벤션 기반 자동 매핑.
+    - todo.lists.get        -> list_lists()
+    - todo.tasks.get        -> list_tasks(**args)
+    - todo.tasks.create     -> create_task(**args)
+    - todo.tasks.delete     -> delete_task(**args)
+    - todo.tasks.lite_list  -> list_tasks_lite(**args)
+    - todo.tasks.lite_all   -> list_tasks_all_lite(**args)
+    - todo.tasks.lite_*     -> *_lite(**args)
+    - todo.sync.*           -> same name methods
+    """
+    parts = name.split(".")
+    if len(parts) < 3 or parts[0] != "todo":
+        return None
+    domain, action = parts[1], ".".join(parts[2:])
+    svc = _service
+
     # lists
-    "todo.lists.get": lambda p: _service().list_lists(),
-    "todo.lists.mutate": lambda p: _service().mutate_list(p),
+    if domain == "lists":
+        if action == "get":
+            return lambda p: svc().list_lists()
+        return None
 
-    # tasks core
-    "todo.tasks.get": lambda p: _service().list_tasks(p["list_id"], user=p.get("user"), top=p.get("top")),
-    "todo.tasks.create": lambda p: _service().create_task(
-        p["list_id"], p["title"],
-        body=p.get("body"), due=p.get("due"), time_zone=p.get("time_zone"),
-        reminder=p.get("reminder"), importance=p.get("importance"), status=p.get("status"),
-        recurrence=p.get("recurrence"),
-    ),
-    "todo.tasks.delete": lambda p: _service().delete_task(p["list_id"], p["task_id"]),
-    "todo.tasks.patch": lambda p: (
-        _service().update_task(p["list_id"], p["task_id"], p["patch"]) if p.get("mode", "generic") == "generic"
-        else _service().complete_task(p["list_id"], p["task_id"]) if p.get("mode") == "complete"
-        else _service().reopen_task(p["list_id"], p["task_id"]) if p.get("mode") == "reopen"
-        else _service().snooze_task(p["list_id"], p["task_id"], p["remind_at_iso"], p.get("tz", "Asia/Seoul")) if p.get("mode") == "snooze"
-        else {"error": f"unsupported patch mode: {p.get('mode')}"}
-    ),
+    # tasks
+    if domain == "tasks":
+        if action in {"get", "create", "delete"}:
+            method = {
+                "get": "list_tasks",
+                "create": "create_task",
+                "delete": "delete_task",
+            }[action]
+            return lambda p, m=method: getattr(svc(), m)(**p)
+        if action.startswith("lite_"):
+            lite_map = {
+                "lite_list": "list_tasks_lite",
+                "lite_all": "list_tasks_all_lite",
+                "lite_complete": "complete_task_lite",
+                "lite_snooze": "snooze_task_lite",
+            }
+            method = lite_map.get(action)
+            if method:
+                return lambda p, m=method: getattr(svc(), m)(**p)
+        return None
 
-    # lite
-    "todo.tasks.lite_list": lambda p: _service().list_tasks_lite(p["list_id"], top=p.get("top", 20)),
-    "todo.tasks.lite_all": lambda p: _service().list_tasks_all_lite(p["list_id"], page_size=p.get("page_size", 100)),
-    "todo.tasks.lite_complete": lambda p: _service().complete_task_lite(p["list_id"], p["task_id"]),
-    "todo.tasks.lite_snooze": lambda p: _service().snooze_task_lite(p["list_id"], p["task_id"], p["remind_at_iso"], p.get("tz", "Asia/Seoul")),
+    # sync
+    if domain == "sync":
+        sync_methods = {"delta_lists", "delta_tasks", "walk_delta_lists", "walk_delta_tasks"}
+        if action in sync_methods:
+            return lambda p, m=action: getattr(svc(), m)(**p)
+        return None
 
-    # delta/sync
-    "todo.sync.delta_lists": lambda p: _service().delta_lists(delta_link=p.get("delta_link")),
-    "todo.sync.delta_tasks": lambda p: _service().delta_tasks(p["list_id"], delta_link=p.get("delta_link")),
-    "todo.sync.walk_delta_lists": lambda p: _service().walk_delta_lists(delta_link=p.get("delta_link")),
-    "todo.sync.walk_delta_tasks": lambda p: _service().walk_delta_tasks(p["list_id"], delta_link=p.get("delta_link")),
-}
+    return None
 
 # 외부 JSON 스키마 로딩
 def load_tool_defs(schema_dir: str) -> List[Dict[str, Any]]:
@@ -71,6 +110,20 @@ def load_tool_defs(schema_dir: str) -> List[Dict[str, Any]]:
 
 TOOLS: List[Dict[str, Any]] = load_tool_defs(cfg.tool_schema_dir)
 TOOLS_BY_NAME: Dict[str, Dict[str, Any]] = {t["name"]: t for t in TOOLS}
+# tag index for quick lookup
+_TAG_INDEX: Dict[str, set[str]] = {}
+for t in TOOLS:
+    for tag in set(t.get("tags", []) or []):
+        _TAG_INDEX.setdefault(tag, set()).add(t.get("name"))
+
+# 툴 실행 함수 매핑(동적 생성 + 특수 케이스 병합)
+TOOL_EXEC_MAP: Dict[str, Callable[[Dict[str, Any]], Any]] = {}
+for tname in TOOLS_BY_NAME.keys():
+    fn = _explicit_exec(tname) or _auto_exec(tname)
+    if fn:
+        TOOL_EXEC_MAP[tname] = fn
+# 안전장치: 누락된 필수 툴 최소 바인딩(과거 매핑 유지)
+TOOL_EXEC_MAP.setdefault("todo.lists.get", lambda p: _service().list_lists())
 
 def validate_params_by_schema(params: Dict[str, Any], schema: Dict[str, Any]) -> Optional[str]:
     try:
@@ -89,23 +142,17 @@ def _list_tools(cursor: Optional[str]) -> Tuple[List[Dict[str, Any]], Optional[s
             "description": t.get("description", ""),
             "inputSchema": t.get("inputSchema", {})
         })
-    # Centralized filtering by current user's allowed_tools (if any)
+    # Policy engine filter (Casbin): single source of truth
     meta = get_current_user_meta() or {}
-    # RBAC role 우선 적용(default는 전체 허용)
-    role = (meta.get("role") or "").strip()
-    allowed = None
-    if role:
-        allowed = rbac.resolve_allowed_tools_for_role(role)
-    # 키에 개별 allowed_tools가 있으면 교차/대체
-    if isinstance(allowed, list) and allowed:
-        names = set(allowed)
-        tool_defs = [td for td in tool_defs if td.get("name") in names]
-    else:
-        key_tools = meta.get("allowed_tools")
-        if isinstance(key_tools, list) and key_tools:
-            names = set(key_tools)
-            tool_defs = [td for td in tool_defs if td.get("name") in names]
+    tool_defs = policy.filter_tools_for(meta, tool_defs)
     return tool_defs, None
+
+# helper for other modules
+def tools_by_tags(tags: list[str]) -> list[str]:
+    out: set[str] = set()
+    for tg in tags or []:
+        out |= _TAG_INDEX.get(tg, set())
+    return sorted(out)
 
 
 def _call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -117,9 +164,14 @@ def _call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     if err:
         raise TypeError(err)
     try:
-        exec_fn = TOOL_EXEC_MAP.get(name)
+        # Casbin-only enforcement for simplicity
+        meta = get_current_user_meta() or {}
+        if not policy.enforce_tool(meta, name):
+            raise PermissionError("Access denied by policy")
+        exec_fn = TOOL_EXEC_MAP.get(name) or _explicit_exec(name) or _auto_exec(name)
         if not exec_fn:
             raise ValueError("No exec function mapped for tool")
+        logger.debug(f"tool.call name={name} args_keys={list((arguments or {}).keys())}")
         raw = exec_fn(arguments or {})
         if isinstance(raw, dict) and "content" in raw and "isError" in raw:
             return raw

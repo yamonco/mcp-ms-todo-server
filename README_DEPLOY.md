@@ -25,10 +25,10 @@ labels:
 ```
 
 ## 환경변수 및 인증
-- 반드시 `.env`의 `API_KEY` 값을 복잡하게 설정하고, 외부에 노출하지 마세요.
-- Cursor/Claude Code에서 MCP 서버 등록 시 `.mcp.json`에 아래와 같이 헤더를 추가:
+- 반드시 `.env`의 `ADMIN_API_KEY` 값을 복잡하게 설정하고, 외부에 노출하지 마세요.
+- Cursor/Claude Code에서 MCP 서버 등록 시에는 '사용자 키'를 사용합니다. `.mcp.json` 예:
 ```
-"headers": { "X-API-Key": "${API_KEY}" }
+"headers": { "X-API-Key": "${USER_API_KEY}" }
 ```
 
 ## 기타

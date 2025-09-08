@@ -17,6 +17,5 @@ sidebar_position: 8
 - 새 프로필 전환: 새 프로필 생성 → API 키의 `token_profile`/`token_id` 갱신 → 구 프로필 정리
 
 ## 보안/가용성
-- `API_KEY`/ADMIN 비밀은 주기적으로 교체하고 최소권한으로 유지
+- `ADMIN_API_KEY`/ADMIN 비밀은 주기적으로 교체하고 최소권한으로 유지
 - `/health`, `/metrics` 제공. 로그는 `LOG_LEVEL`로 제어
-

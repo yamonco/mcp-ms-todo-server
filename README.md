@@ -43,6 +43,29 @@ This project provides a robust, secure, and extensible MCP (Model Context Protoc
 - Docker-native, production-ready, with Makefile automation
 - Real-time streaming (SSE), REST, and optional PowerShell execution
 - Clean architecture: domain/usecases/infrastructure separation
+- Optional Casbin authorization (file or DB policies)
+
+### Module Layout (onboarding-friendly)
+
+```
+app/
+  auth/                       # AuthN/Z boundary (Casbin)
+    __init__.py               # re-exports (filter_tools_for, enforce_tool, reload)
+    policy.py                 # Casbin wiring (file/DB, SSE-safe reload)
+    adapter_sqlalchemy.py     # DB adapter (read-only)
+  policy.py                   # legacy import shim to app.auth.policy
+  casbin_adapter.py           # legacy import shim to app.auth.adapter_sqlalchemy
+  apikeys.py                  # API key issuance (will be gradually moved to repositories/)
+  models.py                   # SQLAlchemy models (includes casbin_rule)
+  tools.py                    # Tool registry, validation, execution
+  main.py                     # FastAPI JSON-RPC endpoint, admin endpoints
+  ...
+policy/
+  model.conf                  # Casbin model (RBAC + wildcards)
+  policy.csv                  # Sample file policy (optional)
+```
+
+This keeps existing imports stable while enabling a clean Auth module and full Casbin.
 
 ---
 
@@ -53,7 +76,7 @@ mcp-ms-todo-server/
 ├── Dockerfile, docker-compose.yml      # Containerization & orchestration
 ├── README.md                          # This file
 ├── app/                               # Main server code (main.py, tools.py, domain/, usecases/, infrastructure/)
-├── auth-helper/                       # CLI helper for app registration, onboarding, token import (argument-only)
+├── auth_helper/                      # CLI helper wrapper package (loads vendor'ed helper modules)
 ├── secrets/                           # Private tokens, DB, never committed
 ├── tools/                             # JSON schemas for tool definitions
 ├── tests/, docs/                      # Test scripts, Docusaurus docs
@@ -72,7 +95,7 @@ mcp-ms-todo-server/
 2. **Onboard & Register App (Argument-Only):**
    - Register Azure AD app (no env, all args):
      ```bash
-     python auth-helper/auth-helper.py register-app --mcp-url http://localhost:8081 --master-key <API_KEY> --admin-tenant-id <TENANT_ID> --admin-client-id <ADMIN_CLIENT_ID> --admin-client-secret <ADMIN_CLIENT_SECRET> --profile admin
+     python -m auth_helper.cli register-app --mcp-url http://localhost:8081 --master-key <ADMIN_API_KEY> --admin-tenant-id <TENANT_ID> --admin-client-id <ADMIN_CLIENT_ID> --admin-client-secret <ADMIN_CLIENT_SECRET> --profile admin
      ```
    - Import user token (from stdin):
      ```bash
@@ -109,6 +132,66 @@ mcp-ms-todo-server/
 - API access is protected by API keys (passed via `X-API-Key` header).
 - RBAC and tool-level access control are enforced.
 - `.env` and `secrets/` are gitignored by default.
+
+### Casbin Authorization
+
+This server can use Casbin to centrally control tool visibility and execution per user.
+
+- Subject: prefers `user_id`, then `name`, then `role`, else `*`
+- Object: tool name (e.g., `todo.tasks.get`)
+- Action: `use`
+
+Where it applies:
+- tools/list: filtered by `app.policy.filter_tools_for()`
+- tools/call: re-checked by `app.policy.enforce_tool()` (prevents bypass)
+Note: DB `allowed_tools` is no longer enforced; Casbin is the single source of truth.
+
+Configure (file-based):
+```
+CASBIN_MODEL=./policy/model.conf
+CASBIN_POLICY=./policy/policy.csv
+```
+
+Configure (DB-based using table `casbin_rule`):
+```
+CASBIN_MODEL=./policy/model.conf
+CASBIN_STORE=db  # or CASBIN_DB=true
+```
+
+Note: with DB-based policies, if the `casbin_rule` table is empty, all access is denied. Seed a baseline rule like `p, *, *, use` if you want allow-all during bootstrap.
+
+Admin endpoint:
+- `POST /admin/policy/reload` (master key required) to force reloading policies (needed for DB-backed updates)
+- `GET /admin/policy/rules` to list current DB rules
+- `POST /admin/policy/rules` to add a rule (ptype, v0..v5)
+- `DELETE /admin/policy/rules` to delete matching rules (ptype, v0..v5)
+
+### Migrating existing allowed_tools to Casbin (DB)
+
+You can mirror current per-user tool permissions into `casbin_rule`:
+
+Example SQL (SQLite) to grant each user_id access to their effective tools:
+
+```sql
+-- For each api key with user_id, insert p, <user_id>, <tool>, use
+INSERT INTO casbin_rule (ptype, v0, v1, v2)
+SELECT 'p' as ptype, ak.user_id as v0, akt.tool as v1, 'use' as v2
+FROM api_keys ak
+JOIN api_key_tools akt ON akt.key = ak.key
+WHERE ak.user_id IS NOT NULL AND ak.user_id <> ''
+;
+```
+
+If you use groups, insert additional rows for group-derived tools accordingly. After seeding, you can rely solely on Casbin.
+
+### Recommended RBAC patterns
+
+- Use role subjects prefixed (e.g., `role:admin`) in p-lines:
+  - `p, role:admin, *, use` allows all tools for admins
+- Map users to roles with g-lines in DB (`casbin_rule` with `ptype='g'`):
+  - `g, alice, role:admin`
+- Per-tool overrides (deny by omission): Casbin model allows only allow rules; omit p-lines to deny.
+
 
 ---
 
@@ -160,9 +243,9 @@ See `/tools/` for full JSON schemas and up-to-date tool definitions.
 All onboarding, app registration, and token import flows are **argument-only**. Example:
 
 ```bash
-python auth-helper/auth-helper.py register-app \
+python -m auth_helper.cli register-app \
   --mcp-url http://localhost:8081 \
-  --master-key <API_KEY> \
+  --master-key <ADMIN_API_KEY> \
   --admin-tenant-id <TENANT_ID> \
   --admin-client-id <ADMIN_CLIENT_ID> \
   --admin-client-secret <ADMIN_CLIENT_SECRET> \
@@ -185,7 +268,7 @@ Tokens can be imported from stdin or file, and all meta is upserted to the DB vi
 ## Development & Contribution
 
 - See `app/` for main server logic and tool definitions
-- See `auth-helper/` for argument-only onboarding and app registration helpers
+- See `auth_helper/` for CLI wrapper; vendor helper modules are under `auth_helper/vendor/`
 - See `tools/` for JSON schemas and tool documentation
 - See `tests/` for smoke tests and usage examples
 - See `docs/` for Docusaurus-based documentation

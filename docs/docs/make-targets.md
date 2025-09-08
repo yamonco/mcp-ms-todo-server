@@ -8,14 +8,14 @@ sidebar_position: 7
 
 ## 공통 전제
 - `.env`에 최소 다음 값을 설정합니다
-  - `API_KEY`: 서버 관리자 키(강력한 랜덤)
+  - `ADMIN_API_KEY`: 서버 관리자 키(강력한 랜덤)
   - `DB_URL`: 예) `sqlite:///./secrets/app.db`
   - `PORT`: 개발 포트(기본 8081)
   - 앱 등록 시: `ADMIN_TENANT_ID`, `ADMIN_CLIENT_ID`, `ADMIN_CLIENT_SECRET`
 
 ## DB & 서버
 - `make db-up`
-  - Alembic 마이그레이션을 최신으로 적용합니다.
+  - DB 스키마는 서버 기동 시 자동 생성됩니다.
 
 - `make dev-serve`
   - 로컬 개발 서버를 uvicorn으로 기동합니다(`--reload`).
@@ -75,8 +75,8 @@ make app-register PROFILE=admin INTERACTIVE=1
   - 헬퍼가 조회 가능한 토큰 상태를 출력.
 
 ## MCP 호출 도우미
-- `make mcp-tools API_KEY=<user_api_key>`
+- `make mcp-tools USER_API_KEY=<user_api_key>`
   - 현재 키로 호출 가능한 툴 목록을 확인합니다.
 
-- `make mcp-call API_KEY=<user_api_key> METHOD=tools/call PARAMS='{"name":"todo.lists.get","arguments":{}}'`
+- `make mcp-call USER_API_KEY=<user_api_key> METHOD=tools/call PARAMS='{"name":"todo.lists.get","arguments":{}}'`
   - 임의의 JSON-RPC 호출을 수행합니다.
