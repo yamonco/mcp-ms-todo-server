@@ -15,7 +15,7 @@ Graph Adapter (`app/adapter_graph_rest.py`):
 - Rate limiting, circuit breaker, backoff, pagination, `$batch`
 - Lite endpoints and delta sync helpers
 
-Auth Helper (modular, in `auth-helper/`):
+Auth Helper (modular, in `app/auth_helper/`):
 - `config.py` (env → Settings), `graph.py` (Graph admin token), `dbsync.py` (Admin API upsert/verify)
 - `tokens.py` (validate/refresh/load/save), `appreg.py` (register/reuse app), `cli.py` (commands)
 - All tokens/meta live in DB; no JSON token files.

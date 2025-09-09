@@ -11,37 +11,23 @@ from typing import Dict, Any, Optional
 import asyncio
 from collections import defaultdict
 
-from fastapi import FastAPI, Request, Header, HTTPException, Response
+from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.responses import JSONResponse as FastAPIJSONResponse
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
 
 from app.tools import _list_tools, _call_tool
-from app.apikeys import (
-    list_keys as apikey_list,
-    resolve_key,
-)
-from app.tokens import list_tokens as token_list
 from app.context import set_current_user_meta
 from app.config import cfg
 from app import policy as policy_mod
-from app.api.routers.admin import router as admin_router
+from app.api.routers.ops import router as ops_router
 from app.api.security import (
     dep_require_user_api_key,
     dep_require_api_key,
 )
 from fastapi import Depends
 from app.schemas.mcp import ManifestResponse, JsonRpcEnvelope
-from app.schemas.admin import (
-    CreateKeyPayload,
-    UpdateKeyPayload,
-    UpsertTokenPayload,
-    UpsertAppPayload,
-    GroupPayload,
-    CasbinRulePayload,
-)
-from app.repositories import casbin_policies as casbin_repo
 
 
  # Logging setup
@@ -97,7 +83,8 @@ def _jsonrpc_err(id_val: Any, code: int, message: str, *, headers: Optional[Dict
 
 
 app = FastAPI(title=cfg.server_name, version=cfg.server_version)
-app.include_router(admin_router, prefix="/admin")
+# Always include ops router (minimal operational endpoints)
+app.include_router(ops_router, prefix="")
 
 # 템플릿 와처 제거(간소화)
 try:
@@ -227,18 +214,11 @@ def _render_metrics() -> str:
     return "\n".join(lines) + "\n"
 
 @app.get("/mcp")
-async def mcp_sse(request: Request, x_api_key: str = Header(None), authorization: str = Header(None)):
+async def mcp_sse(request: Request, auth=Depends(dep_require_api_key)):
     """Optional SSE stream for clients that open a separate event channel.
     We broadcast JSON-RPC responses as SSE data frames on this channel.
     """
     accept = request.headers.get("accept", "")
-    # Lightweight auth for GET (both SSE and non-SSE).
-    # Accept credentials via X-API-Key header, Authorization: Bearer, or query param ?x-api-key=..
-    if cfg.api_key:
-        provided = _get_provided_key(request, x_api_key, authorization)
-        if not provided or provided != cfg.api_key:
-            raise HTTPException(status_code=401, detail="Invalid or missing API Key")
-
     if "text/event-stream" not in accept:
         # For non-SSE GET, return capabilities quickly
         return JSONResponse({"server": CAPABILITIES["server"], "protocolRevision": MCP_PROTOCOL_REV})
@@ -272,87 +252,12 @@ app.add_middleware(
     max_age=3600,
 )
 
-# API Key 인증 미들웨어
-EXPECTED_API_KEY = cfg.api_key
-
-def _get_provided_key(request: Request, x_api_key: Optional[str], authorization: Optional[str]) -> Optional[str]:
-    # Priority: X-API-Key header -> Authorization(Bearer/Basic) -> Cookie -> query param (?x-api-key|?api_key|?apikey)
-    if x_api_key:
-        return x_api_key
-    if authorization:
-        lower = authorization.lower()
-        if lower.startswith("bearer "):
-            return authorization.split(" ", 1)[1].strip()
-        if lower.startswith("basic "):
-            # Accept Basic user:pass, we take pass as api key
-            import base64
-            try:
-                raw = authorization.split(" ", 1)[1].strip()
-                dec = base64.b64decode(raw).decode("utf-8", "ignore")
-                if ":" in dec:
-                    return dec.split(":", 1)[1]
-            except Exception:
-                pass
-    # Cookie lookup
-    try:
-        ck = request.cookies.get("x-api-key") or request.cookies.get("api_key") or request.cookies.get("apikey")
-        if ck:
-            return ck
-    except Exception:
-        pass
-    qp = request.query_params.get("x-api-key")
-    if qp:
-        return qp
-    qp = request.query_params.get("api_key") or request.query_params.get("apikey")
-    if qp:
-        return qp
-    return None
-
-def require_api_key(request: Request, x_api_key: Optional[str], authorization: Optional[str]):
-    provided = _get_provided_key(request, x_api_key, authorization)
-    if EXPECTED_API_KEY and provided == EXPECTED_API_KEY:
-        _inc("mcp_auth_total", outcome="success", kind="master")
-        set_current_user_meta({"master": True})
-        return
-    ok, meta = resolve_key(provided)
-    if ok:
-        _inc("mcp_auth_total", outcome="success", kind="key")
-        set_current_user_meta(meta or None)
-        return
-    has_any_keys = bool(EXPECTED_API_KEY) or bool(apikey_list())
-    if not has_any_keys:
-        _inc("mcp_auth_total", outcome="success", kind="open")
-        set_current_user_meta(None)
-        return
-    _inc("mcp_auth_total", outcome="failure")
-    raise HTTPException(status_code=401, detail="Invalid or missing API Key")
-
-def require_user_api_key(request: Request, x_api_key: Optional[str], authorization: Optional[str]):
-    """Require a generated user API key (not master) and set user meta.
-    In dev-open mode (no keys configured), allow open access.
-    """
-    provided = _get_provided_key(request, x_api_key, authorization)
-    # Reject master for MCP operations
-    if EXPECTED_API_KEY and provided == EXPECTED_API_KEY:
-        raise HTTPException(status_code=401, detail="User API key required for MCP (do not use ADMIN_API_KEY)")
-    ok, meta = resolve_key(provided)
-    if ok:
-        _inc("mcp_auth_total", outcome="success", kind="key")
-        set_current_user_meta(meta or None)
-        return
-    _inc("mcp_auth_total", outcome="failure")
-    raise HTTPException(status_code=401, detail="Invalid or missing User API key")
+## Removed legacy API key middleware; authentication is handled in app.api.security
 
 
 @app.get("/health")
 def health(auth=Depends(dep_require_api_key)):
-    return {
-        "status": "ok",
-        "server": CAPABILITIES["server"],
-        "protocolRevision": MCP_PROTOCOL_REV,
-        "apiKeyRequired": bool(cfg.api_key),
-        "tokenPresent": True,  # DB 기반으로 관리
-    }
+    return {"status": "ok", "server": CAPABILITIES["server"], "protocolRevision": MCP_PROTOCOL_REV}
 
 @app.get("/mcp/capabilities")
 def mcp_capabilities():
@@ -550,54 +455,6 @@ async def mcp_entry(request: Request, auth=Depends(dep_require_user_api_key)):
     log_event("rpc.error", reason="method_not_found")
     _observe_hist("mcp_http_request_duration_ms", int((time.time() - t0) * 1000), endpoint=method, status="not_found", tool="")
     return _jsonrpc_err(req.id, -32601, "Method not found", headers={"x-correlation-id": correlation_id})
-
-# ---------------------------------------------------------------------
-# Admin: API key management (master key only)
-# ---------------------------------------------------------------------
-
-
-def _require_master(request: Request, x_api_key: Optional[str], authorization: Optional[str]):
-    provided = _get_provided_key(request, x_api_key, authorization)
-    # Dev-open mode: if no master and no generated keys exist, allow
-    try:
-        has_any_keys = bool(EXPECTED_API_KEY) or bool(apikey_list())
-    except Exception:
-        has_any_keys = bool(EXPECTED_API_KEY)
-    if not has_any_keys:
-        return
-    if EXPECTED_API_KEY and provided == EXPECTED_API_KEY:
-        return
-    raise HTTPException(status_code=403, detail="Master API key required")
-
-
- 
-
-
-# Tokens management (admin)
-
-
- 
-
-# Admin: Apps (registered applications)
-
-
- 
-
-
- 
-
-
-# Groups (policy presets)
-
-
- 
-
-
-# ---------------------------------------------------------------------
-# Admin: Auth status (Option B - external refresher)
-# ---------------------------------------------------------------------
- 
-
 
 @app.get("/metrics")
 def metrics():

@@ -1,0 +1,1 @@
+{"name":"mcp-ms-todo-server-root","private":true,"type":"module","scripts":{"mcp:call":"node client/mcp-client.mjs"}}

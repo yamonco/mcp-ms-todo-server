@@ -14,11 +14,18 @@ services:
     environment:
       TZ: ${TZ}
       PORT: ${PORT}
-      EXECUTOR_MODE: ${EXECUTOR_MODE}
       LOG_LEVEL: ${LOG_LEVEL}
-      APP_PREFIX: ${APP_PREFIX}
-      SCOPES: ${SCOPES}
     volumes:
-      - "${HOST_SECRETS}:${SERVER_CTR_SECRETS}:ro"   # ./secrets -> /app/secrets (read-only)
+      - "${HOST_SECRETS}:${SERVER_CTR_SECRETS}:ro"
       #- "./app:/app"
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${PORT}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # legacy refresh-loop removed (delegated to authentik)

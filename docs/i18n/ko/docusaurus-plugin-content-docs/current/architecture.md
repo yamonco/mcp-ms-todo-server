@@ -11,7 +11,6 @@ sidebar_position: 2
 Graph 어댑터(app/adapter_graph_rest.py)
 - 레이트리밋/사이킷브레이커/백오프/페이지네이션/배치
 
-Auth Helper(`auth-helper/`)
+Auth Helper(`app/auth_helper/`)
 - config/graph/dbsync/tokens/appreg/cli 로 분리
 - 모든 토큰/메타는 DB에만 저장
-

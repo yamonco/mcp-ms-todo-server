@@ -1,0 +1,10 @@
+{
+  "name": "poweruser",
+  "description": "Power user template (extend lite with selective writes)",
+  "suggestedTags": ["lite"],
+  "notes": [
+    "Use groups + Casbin p, group:powerusers, <tool>, use to grant writes",
+    "This file is a reference for onboarding; the policy engine is Casbin"
+  ]
+}
+

@@ -1,0 +1,34 @@
+{
+  "users": [
+    {
+      "name": "admin",
+      "profile": "admin",
+      "groups": [
+        "admins"
+      ],
+      "roles": [
+        "role:all"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "name": "admins",
+      "roles": [
+        "role:all"
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "sub": "role:all",
+      "obj": "*",
+      "act": "use"
+    }
+  ],
+  "description": "Full access template (role:all)",
+  "notes": [
+    "Casbin policy should grant role:all to all tools",
+    "This JSON is used for onboarding and bootstrap; enforcement is handled by Casbin."
+  ]
+}

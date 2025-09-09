@@ -23,12 +23,14 @@ logger = logging.getLogger("tools")
 
 def _service():
     meta = get_current_user_meta() or {}
-    # DB 기반: token_id 또는 token_profile (프로필명)만 지원
+    # authentik-only: rely on bearer-derived token; DB profile not required
+    if cfg.authentik_only or (cfg.authentik_enabled and meta.get("authentik_access_token")):
+        return get_todo_service_for(None, token_id=None)
+    # DB 기반: token_id 또는 token_profile (프로필명) 필요
     token_id = meta.get("token_id") if isinstance(meta.get("token_id"), int) else None
     token_profile = meta.get("token_profile") or None
     if not token_id and not token_profile:
-        # 명확한 에러: MCP 도구 호출에는 사용자 API 키가 필요
-        raise RuntimeError("User API key required: provide a key bound to token_profile/token_id (do not use ADMIN_API_KEY)")
+        raise RuntimeError("User API key required: provide a key bound to token_profile/token_id (authentik bearer also allowed if AUTHENTIK_ENABLED)")
     return get_todo_service_for(token_profile, token_id=token_id)
 
 def _explicit_exec(name: str) -> Optional[Callable[[Dict[str, Any]], Any]]:

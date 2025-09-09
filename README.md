@@ -76,7 +76,7 @@ mcp-ms-todo-server/
 ├── Dockerfile, docker-compose.yml      # Containerization & orchestration
 ├── README.md                          # This file
 ├── app/                               # Main server code (main.py, tools.py, domain/, usecases/, infrastructure/)
-├── auth_helper/                      # CLI helper wrapper package (loads vendor'ed helper modules)
+├── app/auth_helper/                  # CLI helper wrapper package (loads vendor'ed helper modules)
 ├── secrets/                           # Private tokens, DB, never committed
 ├── tools/                             # JSON schemas for tool definitions
 ├── tests/, docs/                      # Test scripts, Docusaurus docs
@@ -95,7 +95,7 @@ mcp-ms-todo-server/
 2. **Onboard & Register App (Argument-Only):**
    - Register Azure AD app (no env, all args):
      ```bash
-     python -m auth_helper.cli register-app --mcp-url http://localhost:8081 --master-key <ADMIN_API_KEY> --admin-tenant-id <TENANT_ID> --admin-client-id <ADMIN_CLIENT_ID> --admin-client-secret <ADMIN_CLIENT_SECRET> --profile admin
+     python -m app.auth_helper.cli register-app --mcp-url http://localhost:8081 --master-key <ADMIN_API_KEY> --admin-tenant-id <TENANT_ID> --admin-client-id <ADMIN_CLIENT_ID> --admin-client-secret <ADMIN_CLIENT_SECRET> --profile admin
      ```
    - Import user token (from stdin):
      ```bash
@@ -113,14 +113,18 @@ mcp-ms-todo-server/
    make prod-up
    ```
 
-4. **Call Tools (JSON-RPC):**
-   - List tools:
-     ```json
-     { "method": "tools/list", "params": {} }
+4. **Call Tools**
+   - curl(CLI):
+     ```bash
+     METHOD=tools/list make mcp-call USER_API_KEY=<KEY> PARAMS='{}'
+     METHOD=tools/call make mcp-call USER_API_KEY=<KEY> \
+       PARAMS='{ "name": "todo.lists.get", "arguments": {} }'
      ```
-   - Call a tool:
-     ```json
-     { "method": "tools/call", "params": { "name": "todo.tasks.get", "arguments": { "list_id": "<LIST_ID>" } } }
+   - Node (npx):
+     ```bash
+     METHOD=tools/list make client-call USER_API_KEY=<KEY> PARAMS='{}'
+     METHOD=tools/call make client-call USER_API_KEY=<KEY> \
+       PARAMS='{ "name": "todo.lists.get", "arguments": {} }'
      ```
 
 ---
@@ -160,11 +164,8 @@ CASBIN_STORE=db  # or CASBIN_DB=true
 
 Note: with DB-based policies, if the `casbin_rule` table is empty, all access is denied. Seed a baseline rule like `p, *, *, use` if you want allow-all during bootstrap.
 
-Admin endpoint:
-- `POST /admin/policy/reload` (master key required) to force reloading policies (needed for DB-backed updates)
-- `GET /admin/policy/rules` to list current DB rules
-- `POST /admin/policy/rules` to add a rule (ptype, v0..v5)
-- `DELETE /admin/policy/rules` to delete matching rules (ptype, v0..v5)
+Admin/ops endpoints:
+- `POST /ops/policy/reload` (admin token or master key required) to force reloading policies (needed for DB-backed updates). In authentik-only mode, admin endpoints may be hidden; ops remains.
 
 ### Migrating existing allowed_tools to Casbin (DB)
 
@@ -243,7 +244,7 @@ See `/tools/` for full JSON schemas and up-to-date tool definitions.
 All onboarding, app registration, and token import flows are **argument-only**. Example:
 
 ```bash
-python -m auth_helper.cli register-app \
+python -m app.auth_helper.cli register-app \
   --mcp-url http://localhost:8081 \
   --master-key <ADMIN_API_KEY> \
   --admin-tenant-id <TENANT_ID> \
@@ -263,12 +264,19 @@ Tokens can be imported from stdin or file, and all meta is upserted to the DB vi
 - Only delegated permissions are supported for Microsoft To Do (no application permissions).
 - Periodic re-login may be required depending on your organization's security policy.
 
+## Deployment (Docker Compose)
+
+- `docker-compose.yml` builds the app, runs as non-root, mounts secrets read-only, enables read-only root FS, applies `no-new-privileges`, and defines a healthcheck on `/health`.
+- `docker-compose.direct.yml` publishes `${PORT}:${PORT}` for direct access during development.
+- `docker-compose.traefik.yml` exposes the service through Traefik with TLS using `${TRAEFIK_NETWORK}`.
+- Ensure `.env` contains `ADMIN_API_KEY`; keep `secrets/` out of version control.
+
 ---
 
 ## Development & Contribution
 
 - See `app/` for main server logic and tool definitions
-- See `auth_helper/` for CLI wrapper; vendor helper modules are under `auth_helper/vendor/`
+- See `app/auth_helper/` for CLI wrapper; vendor helper modules are under `app/auth_helper/vendor/`
 - See `tools/` for JSON schemas and tool documentation
 - See `tests/` for smoke tests and usage examples
 - See `docs/` for Docusaurus-based documentation

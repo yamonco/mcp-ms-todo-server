@@ -24,12 +24,18 @@ labels:
   - "traefik.docker.network=traefik_public"
 ```
 
-## 환경변수 및 인증
-- 반드시 `.env`의 `ADMIN_API_KEY` 값을 복잡하게 설정하고, 외부에 노출하지 마세요.
-- Cursor/Claude Code에서 MCP 서버 등록 시에는 '사용자 키'를 사용합니다. `.mcp.json` 예:
-```
-"headers": { "X-API-Key": "${USER_API_KEY}" }
-```
+## 인증 모드
+- 권장: authentik (OIDC)
+  - `.env`에서 `AUTHENTIK_ENABLED=true`, `AUTHENTIK_ONLY=true`를 설정하고, 인트로스펙션 URL과 클라이언트 자격증명을 채웁니다.
+  - 역할/그룹/권한은 스코프 및 클레임으로 전달됩니다(`mcp.admin`, `mcp.role:*`, `groups`).
+  - 그래프 토큰은 커스텀 클레임(`graph_access_token`/`graph_refresh_token`)으로 전달하도록 매핑하세요.
+- 호환: API Key
+  - `.env`의 `ADMIN_API_KEY`를 강력한 값으로 설정하세요.
+  - 사용자 API 키는 서버에서 발급되며, 호출 시 `X-API-Key`에 포함합니다.
+
+## 개발 편의 (authentik)
+- 로컬 통합 부팅: `make authentik-up` (Postgres/Redis 포함)
+- 서버는 `.env`의 `AUTHENTIK_*` 값을 사용해 인트로스펙트합니다.
 
 ## 기타
 - 운영 환경에서는 Traefik 네트워크와 certresolver 이름을 실제 환경에 맞게 수정하세요.

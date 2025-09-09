@@ -1,0 +1,19 @@
+{
+  "name": "lite",
+  "description": "Safe read-focused template (role:lite)",
+  "tools": [
+    "todo.lists.get",
+    "todo.tasks.lite_list",
+    "todo.tasks.lite_all",
+    "todo.tasks.lite_complete",
+    "todo.tasks.lite_snooze",
+    "todo.sync.delta_lists",
+    "todo.sync.delta_tasks",
+    "todo.sync.walk_delta_lists",
+    "todo.sync.walk_delta_tasks"
+  ],
+  "notes": [
+    "This JSON is informational; actual authorization is enforced via Casbin role:lite"
+  ]
+}
+

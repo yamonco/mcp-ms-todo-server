@@ -61,5 +61,17 @@ class Config:
     db_echo: bool = _get_env_bool("DB_ECHO", False)
     db_auto_create: bool = _get_env_bool("DB_AUTO_CREATE", True)
 
+    # authentik integration (OIDC)
+    authentik_enabled: bool = _get_env_bool("AUTHENTIK_ENABLED", False)
+    authentik_only: bool = _get_env_bool("AUTHENTIK_ONLY", False)
+    authentik_introspection_url: str | None = os.getenv("AUTHENTIK_INTROSPECTION_URL")
+    authentik_client_id: str | None = os.getenv("AUTHENTIK_CLIENT_ID")
+    authentik_client_secret: str | None = os.getenv("AUTHENTIK_CLIENT_SECRET")
+    authentik_admin_role: str = os.getenv("AUTHENTIK_ADMIN_ROLE", "mcp.admin")
+    authentik_role_prefix: str = os.getenv("AUTHENTIK_ROLE_PREFIX", "mcp.role:")
+    authentik_groups_claim: str = os.getenv("AUTHENTIK_GROUPS_CLAIM", "groups")
+    authentik_graph_access_claim: str = os.getenv("AUTHENTIK_GRAPH_ACCESS_CLAIM", "graph_access_token")
+    authentik_graph_refresh_claim: str = os.getenv("AUTHENTIK_GRAPH_REFRESH_CLAIM", "graph_refresh_token")
+
 
 cfg = Config()
