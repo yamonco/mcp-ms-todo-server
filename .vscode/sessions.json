@@ -1,0 +1,144 @@
+{
+  "version": "1.0.0",
+  "groups": [
+    {
+      "name": "🚀 개발 서버",
+      "icon": "server-environment",
+      "terminals": [
+        {
+          "name": "📈 Dev Server",
+          "icon": "play",
+          "command": "make dev-serve",
+          "description": "FastAPI 개발 서버 시작 (포트 자동 할당, 리로드 활성화)"
+        },
+        {
+          "name": "🔍 Dev Status",
+          "icon": "info",
+          "command": "make dev-status",
+          "description": "개발 서버 상태 확인"
+        },
+        {
+          "name": "⏹️ Dev Stop",
+          "icon": "stop-circle",
+          "command": "make dev-stop",
+          "description": "개발 서버 중지"
+        }
+      ]
+    },
+    {
+      "name": "🧪 테스트 & 검증",
+      "icon": "beaker",
+      "terminals": [
+        {
+          "name": "💨 Smoke Test",
+          "icon": "test-view",
+          "command": "make dev-smoke",
+          "description": "빠른 연기 테스트 실행"
+        },
+        {
+          "name": "🐍 Python Test",
+          "icon": "python",
+          "command": "python smoke_test.py",
+          "description": "직접 Python 연기 테스트 실행"
+        }
+      ]
+    },
+    {
+      "name": "🔧 MCP 도구",
+      "icon": "tools",
+      "terminals": [
+        {
+          "name": "📋 MCP Tools",
+          "icon": "list-flat",
+          "command": "make mcp-tools",
+          "description": "사용 가능한 MCP 도구 목록 조회"
+        },
+        {
+          "name": "📞 MCP Call",
+          "icon": "symbol-method",
+          "command": "make mcp-call",
+          "description": "MCP 도구 호출 테스트"
+        },
+        {
+          "name": "🔐 Auth Check",
+          "icon": "shield",
+          "command": "make auth-check",
+          "description": "인증 상태 확인"
+        }
+      ]
+    },
+    {
+      "name": "🐳 Docker & 인증",
+      "icon": "vm",
+      "terminals": [
+        {
+          "name": "🔑 Authentik Up",
+          "icon": "arrow-up",
+          "command": "make authentik-up",
+          "description": "Authentik 인증 서비스 시작"
+        },
+        {
+          "name": "🔒 Authentik Down",
+          "icon": "arrow-down",
+          "command": "make authentik-down",
+          "description": "Authentik 인증 서비스 중지"
+        },
+        {
+          "name": "🚢 Prod Up",
+          "icon": "rocket",
+          "command": "make prod-up",
+          "description": "프로덕션 환경 시작"
+        }
+      ]
+    },
+    {
+      "name": "⚙️ 관리 & 정리",
+      "icon": "settings",
+      "terminals": [
+        {
+          "name": "🔄 Policy Reload",
+          "icon": "refresh",
+          "command": "make policy-reload",
+          "description": "Casbin 정책 다시 로드"
+        },
+        {
+          "name": "🧹 Dev Clean",
+          "icon": "trash",
+          "command": "make dev-clean",
+          "description": "개발 환경 정리 (컨테이너, 볼륨, DB 삭제)"
+        },
+        {
+          "name": "📊 URLs Info",
+          "icon": "link",
+          "command": "make urls",
+          "description": "서비스 URL 정보 표시"
+        }
+      ]
+    },
+    {
+      "name": "📋 빠른 명령어",
+      "icon": "terminal",
+      "terminals": [
+        {
+          "name": "💻 Terminal",
+          "icon": "terminal-bash",
+          "command": "",
+          "description": "일반 터미널"
+        },
+        {
+          "name": "📦 Make Help",
+          "icon": "question",
+          "command": "make help",
+          "description": "사용 가능한 Make 타겟 도움말"
+        },
+        {
+          "name": "🔧 UV Run",
+          "icon": "gear",
+          "command": "uv run --",
+          "description": "UV 패키지 매니저로 Python 명령 실행",
+          "keepOpen": true
+        }
+      ]
+    }
+  ]
+}
