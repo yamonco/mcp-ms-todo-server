@@ -45,8 +45,9 @@ data/
 data_pre/
 logs/
 
-# IDE/Editor
-.vscode/
+# IDE/Editor  
+.vscode/*
+!.vscode/sessions.json
 .idea/
 
 # PowerShell/Script logs
