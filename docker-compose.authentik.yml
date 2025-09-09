@@ -24,8 +24,8 @@ services:
       - AUTHENTIK_POSTGRESQL__PASSWORD=authentik
       - AUTHENTIK_SECRET_KEY=please-change-me
     ports:
-      - "9000:9000" # http
-      - "9443:9443" # https
+      - "${AUTHENTIK_HTTP_PORT:-9190}:9000" # http
+      - "${AUTHENTIK_HTTPS_PORT:-9444}:9443" # https
     depends_on:
       - postgres
       - redis

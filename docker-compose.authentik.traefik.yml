@@ -1,0 +1,18 @@
+services:
+  server:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.routers.${AUTH_ROUTER_NAME}.rule=Host(`${AUTH_DOMAIN}`)"
+      - "traefik.http.routers.${AUTH_ROUTER_NAME}.entryPoints=${TRAEFIK_ENTRYPOINTS}"
+      - "traefik.http.routers.${AUTH_ROUTER_NAME}.tls=true"
+      - "traefik.http.routers.${AUTH_ROUTER_NAME}.tls.certresolver=${ACME_RESOLVER}"
+      - "traefik.http.routers.${AUTH_ROUTER_NAME}.service=${AUTH_SERVICE_NAME}"
+      - "traefik.http.services.${AUTH_SERVICE_NAME}.loadbalancer.server.port=9000"
+    networks:
+      - traefik_ext
+
+networks:
+  traefik_ext:
+    external: true
+    name: ${TRAEFIK_NETWORK}

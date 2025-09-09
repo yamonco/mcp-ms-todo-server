@@ -7,6 +7,7 @@ services:
       - "traefik.http.routers.${ROUTER_NAME}.entryPoints=${TRAEFIK_ENTRYPOINTS}"
       - "traefik.http.routers.${ROUTER_NAME}.tls=true"
       - "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=${ACME_RESOLVER}"
+      - "traefik.http.routers.${ROUTER_NAME}.service=${SERVICE_NAME}"
       - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=${PORT}"
     networks:
       - traefik_ext

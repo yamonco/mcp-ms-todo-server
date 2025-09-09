@@ -22,6 +22,7 @@ from app.context import set_current_user_meta
 from app.config import cfg
 from app import policy as policy_mod
 from app.api.routers.ops import router as ops_router
+from app.api.routers.admin import router as admin_router
 from app.api.security import (
     dep_require_user_api_key,
     dep_require_api_key,
@@ -85,6 +86,8 @@ def _jsonrpc_err(id_val: Any, code: int, message: str, *, headers: Optional[Dict
 app = FastAPI(title=cfg.server_name, version=cfg.server_version)
 # Always include ops router (minimal operational endpoints)
 app.include_router(ops_router, prefix="")
+# Admin endpoints (apps/keys/tokens)
+app.include_router(admin_router, prefix="")
 
 # 템플릿 와처 제거(간소화)
 try:
